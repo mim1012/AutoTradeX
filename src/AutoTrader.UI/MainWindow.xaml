@@ -1,12 +1,329 @@
-﻿<Window x:Class="AutoTrader.UI.MainWindow"
+<Window x:Class="AutoTrader.UI.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AutoTrader.UI"
+        xmlns:vm="clr-namespace:AutoTrader.UI.ViewModels"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="AutoTradeX - 미국주식 자동매매 시스템" 
+        Height="900" Width="1400"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5">
+    
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
 
+    <Window.Resources>
+        <!-- 스타일 정의 -->
+        <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style x:Key="StatusTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#666"/>
+        </Style>
+
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#CCCCCC" BlurRadius="10" ShadowDepth="2" Opacity="0.3"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#005A9E"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="200"/>
+        </Grid.RowDefinitions>
+
+        <!-- 1. 상단: 시스템 제어 버튼 -->
+        <Border Grid.Row="0" Style="{StaticResource CardStyle}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button Content="▶ 시스템 시작" 
+                        Style="{StaticResource ButtonStyle}"
+                        Command="{Binding StartSystemCommand}"/>
+                <Button Content="⏹ 시스템 중지" 
+                        Style="{StaticResource ButtonStyle}"
+                        Background="#D32F2F"
+                        Command="{Binding StopSystemCommand}"/>
+                <Button Content="🔄 Top 300 갱신" 
+                        Style="{StaticResource ButtonStyle}"
+                        Background="#388E3C"
+                        Command="{Binding RefreshTop300Command}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 2. 대시보드 영역 -->
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 2-1. API 접속 상태 -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="📡 API 접속 상태" Style="{StaticResource HeaderTextStyle}"/>
+                    <TextBlock Text="{Binding ApiConnectionStatus}" 
+                               Style="{StaticResource StatusTextStyle}"
+                               FontSize="16"
+                               FontWeight="Bold"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 2-2. 계좌 정보 -->
+            <Border Grid.Column="1" Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="💰 계좌 정보" Style="{StaticResource HeaderTextStyle}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="총 자산: " Style="{StaticResource StatusTextStyle}"/>
+                        <TextBlock Text="{Binding TotalAssets}" 
+                                   Style="{StaticResource StatusTextStyle}"
+                                   FontWeight="Bold"
+                                   Foreground="#007ACC"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="예수금: " Style="{StaticResource StatusTextStyle}"/>
+                        <TextBlock Text="{Binding AccountBalance}" 
+                                   Style="{StaticResource StatusTextStyle}"
+                                   FontWeight="Bold"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 2-3. 시장 상태 -->
+            <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="🌐 미국 시장 상태" Style="{StaticResource HeaderTextStyle}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="상태: " Style="{StaticResource StatusTextStyle}"/>
+                        <TextBlock Text="{Binding MarketStatus}" 
+                                   Style="{StaticResource StatusTextStyle}"
+                                   FontWeight="Bold"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="마감 시간: " Style="{StaticResource StatusTextStyle}"/>
+                        <TextBlock Text="{Binding MarketCloseTime}" 
+                                   Style="{StaticResource StatusTextStyle}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="서머타임: " Style="{StaticResource StatusTextStyle}"/>
+                        <TextBlock Text="{Binding IsDstActive, StringFormat={}{0:활성/비활성}}" 
+                                   Style="{StaticResource StatusTextStyle}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 3. 메인 컨텐츠 영역 -->
+        <Grid Grid.Row="2" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 3-1. 왼쪽: 종목 리스트 -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- 거래대금 상위 300 -->
+                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="5,5,5,5">
+                    <DockPanel>
+                        <TextBlock Text="📊 거래대금 상위 300 종목" 
+                                   Style="{StaticResource HeaderTextStyle}"
+                                   DockPanel.Dock="Top"/>
+                        <DataGrid ItemsSource="{Binding Top300Stocks}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  GridLinesVisibility="Horizontal"
+                                  HeadersVisibility="Column"
+                                  RowBackground="White"
+                                  AlternatingRowBackground="#F9F9F9"
+                                  BorderThickness="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="순위" Binding="{Binding Rank}" Width="50"/>
+                                <DataGridTextColumn Header="종목코드" Binding="{Binding Symbol}" Width="80"/>
+                                <DataGridTextColumn Header="종목명" Binding="{Binding Name}" Width="*"/>
+                                <DataGridTextColumn Header="현재가" Binding="{Binding CurrentPrice, StringFormat=\{0:C2\}}" Width="100"/>
+                                <DataGridTextColumn Header="등락률" Binding="{Binding ChangeRate, StringFormat=\{0:F2\}%}" Width="80"/>
+                                <DataGridTextColumn Header="거래대금" Binding="{Binding TradeAmount, StringFormat=\{0:N0\}}" Width="120"/>
+                                <DataGridCheckBoxColumn Header="조건충족" Binding="{Binding IsConditionMet}" Width="70"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+
+                <!-- 조건 충족 후보 -->
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="5,5,5,5">
+                    <DockPanel>
+                        <TextBlock Text="✅ 조건 충족 후보 종목" 
+                                   Style="{StaticResource HeaderTextStyle}"
+                                   DockPanel.Dock="Top"/>
+                        <DataGrid ItemsSource="{Binding CandidateStocks}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  GridLinesVisibility="Horizontal"
+                                  HeadersVisibility="Column"
+                                  RowBackground="#E8F5E9"
+                                  BorderThickness="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="종목코드" Binding="{Binding Symbol}" Width="100"/>
+                                <DataGridTextColumn Header="종목명" Binding="{Binding Name}" Width="*"/>
+                                <DataGridTextColumn Header="현재가" Binding="{Binding CurrentPrice, StringFormat=\{0:C2\}}" Width="100"/>
+                                <DataGridTextColumn Header="등락률" Binding="{Binding ChangeRate, StringFormat=\{0:F2\}%}" Width="100"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <!-- 3-2. 오른쪽: 설정 및 상태 -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- 매매 설정 -->
+                <Border Grid.Row="0" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="⚙️ 매매 설정" Style="{StaticResource HeaderTextStyle}"/>
+                        
+                        <TextBlock Text="매수 비율 (%)" Margin="0,5,0,5"/>
+                        <TextBox Text="{Binding AllocationPercent, UpdateSourceTrigger=PropertyChanged}" 
+                                 Padding="5"
+                                 FontSize="14"/>
+
+                        <CheckBox Content="보유 종목 재진입 방지" 
+                                  IsChecked="{Binding PreventReEntry}"
+                                  Margin="0,10,0,0"
+                                  FontSize="14"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 실시간 상태 -->
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="5,10,5,5">
+                    <StackPanel>
+                        <TextBlock Text="⏱️ 실시간 상태" Style="{StaticResource HeaderTextStyle}"/>
+                        
+                        <TextBlock Text="장마감 카운트다운" Margin="0,5,0,5"/>
+                        <TextBlock Text="{Binding CountdownText}" 
+                                   FontSize="24"
+                                   FontWeight="Bold"
+                                   Foreground="#D32F2F"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 주문 예정 -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="5,5,5,5">
+                    <DockPanel>
+                        <TextBlock Text="🎯 주문 예정 종목" 
+                                   Style="{StaticResource HeaderTextStyle}"
+                                   DockPanel.Dock="Top"/>
+                        <ListBox ItemsSource="{Binding OrderPendingStocks}"
+                                 BorderThickness="0"
+                                 Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#FFF3E0" 
+                                            CornerRadius="4" 
+                                            Padding="10" 
+                                            Margin="0,5,0,5">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Symbol}" 
+                                                       FontWeight="Bold" 
+                                                       FontSize="16"/>
+                                            <TextBlock Text="{Binding Name}" 
+                                                       Foreground="#666"/>
+                                            <TextBlock>
+                                                <Run Text="등락률: "/>
+                                                <Run Text="{Binding ChangeRate, StringFormat=\{0:F2\}%}" 
+                                                     FontWeight="Bold" 
+                                                     Foreground="#D32F2F"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- 4. 하단: 로그 출력 -->
+        <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,10,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <TextBlock Text="📝 시스템 로그" 
+                               Style="{StaticResource HeaderTextStyle}"
+                               DockPanel.Dock="Left"/>
+                    <Button Content="🗑️ 로그 지우기" 
+                            Style="{StaticResource ButtonStyle}"
+                            Background="#757575"
+                            HorizontalAlignment="Right"
+                            Command="{Binding ClearLogCommand}"/>
+                </DockPanel>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <TextBox Text="{Binding LogText, Mode=OneWay}" 
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             Background="#1E1E1E"
+                             Foreground="#D4D4D4"
+                             Padding="10"
+                             BorderThickness="0"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>
