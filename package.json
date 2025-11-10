@@ -1,0 +1,31 @@
+{
+  "name": "autotradex",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mim1012/AutoTradeX.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mim1012/AutoTradeX/issues"
+  },
+  "homepage": "https://github.com/mim1012/AutoTradeX#readme",
+  "description": "",
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "dotenv": "^17.2.3",
+    "openai": "^6.8.1",
+    "simple-git": "^3.30.0"
+  }
+}
