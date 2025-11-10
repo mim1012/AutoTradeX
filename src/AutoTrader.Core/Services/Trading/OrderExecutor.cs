@@ -202,15 +202,21 @@ public class OrderExecutor : IOrderExecutor
 
     /// <summary>
     /// 미국 동부 시간 (ET) 계산
-    /// TODO: DST (Daylight Saving Time) 처리 필요
+    /// DST (Daylight Saving Time) 자동 처리
     /// </summary>
     private static DateTime GetEasternTime()
     {
-        // 간단 구현: UTC - 5시간 (EST)
-        // 실제로는 DST 기간(3월~11월)에는 UTC - 4시간 (EDT)
-        var utcNow = DateTime.UtcNow;
-        var etNow = utcNow.AddHours(-5);
-
-        return etNow;
+        try
+        {
+            // .NET TimeZoneInfo를 사용하여 DST 자동 처리
+            var etZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, etZone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            // Linux 환경에서는 "America/New_York" 사용
+            var etZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, etZone);
+        }
     }
 }
