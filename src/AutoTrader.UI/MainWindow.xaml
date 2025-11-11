@@ -299,7 +299,7 @@
             
             <!-- Tab 2: 조건식 설정 -->
             <TabItem Header="⚙️ 조건식 설정">
-                <views:ConditionBuilderControl/>
+                <views:ConditionBuilderControl DataContext="{Binding ConditionBuilder}"/>
             </TabItem>
             
         </TabControl>

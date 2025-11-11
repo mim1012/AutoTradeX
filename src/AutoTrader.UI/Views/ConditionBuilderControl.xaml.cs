@@ -1,5 +1,4 @@
 using System.Windows.Controls;
-using AutoTrader.UI.ViewModels;
 
 namespace AutoTrader.UI.Views;
 
@@ -11,6 +10,6 @@ public partial class ConditionBuilderControl : UserControl
     public ConditionBuilderControl()
     {
         InitializeComponent();
-        DataContext = new ConditionBuilderViewModel();
+        // DataContext는 부모 컨테이너나 DI에서 설정됨
     }
 }

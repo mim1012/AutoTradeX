@@ -136,6 +136,11 @@ public class MainViewModel : ViewModelBase
     /// </summary>
     public ObservableCollection<StockInfo> OrderPendingStocks { get; } = new();
 
+    /// <summary>
+    /// 조건식 빌더 ViewModel
+    /// </summary>
+    public ConditionBuilderViewModel ConditionBuilder { get; }
+
     #endregion
 
     #region Commands
@@ -156,6 +161,9 @@ public class MainViewModel : ViewModelBase
     public MainViewModel(ITradingService tradingService)
     {
         _tradingService = tradingService;
+
+        // ViewModel 초기화
+        ConditionBuilder = new ConditionBuilderViewModel();
 
         // 이벤트 구독
         _tradingService.LogReceived += OnLogReceived;

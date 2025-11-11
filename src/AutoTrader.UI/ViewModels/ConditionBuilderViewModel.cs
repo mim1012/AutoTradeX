@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows.Input;
 using AutoTrader.UI.Commands;
@@ -17,14 +19,17 @@ public class ConditionBuilderViewModel : ViewModelBase
     public ConditionBuilderViewModel()
     {
         Conditions = new ObservableCollection<ConditionItemViewModel>();
-        
+
+        // Conditions 컬렉션 변경 이벤트 구독
+        Conditions.CollectionChanged += OnConditionsCollectionChanged;
+
         // Commands 초기화
-        AddConditionCommand = new RelayCommand(ExecuteAddCondition, CanExecuteAddCondition);
+        AddConditionCommand = new RelayCommand(_ => ExecuteAddCondition(), _ => CanExecuteAddCondition());
         EditConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteEditCondition);
         RemoveConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteRemoveCondition);
-        SaveConditionsCommand = new RelayCommand(ExecuteSaveConditions);
-        TestConditionsCommand = new RelayCommand(ExecuteTestConditions);
-        
+        SaveConditionsCommand = new RelayCommand(_ => ExecuteSaveConditions());
+        TestConditionsCommand = new RelayCommand(_ => ExecuteTestConditions());
+
         // 초기 논리식 설정
         UpdateLogicExpression();
     }
@@ -76,21 +81,33 @@ public class ConditionBuilderViewModel : ViewModelBase
 
     private void ExecuteAddCondition()
     {
-        // TODO: 조건 추가 다이얼로그 열기
-        // 임시로 샘플 조건 추가
-        var newId = GetNextConditionId();
-        var newCondition = new ConditionItemViewModel
+        try
         {
-            Id = newId,
-            Type = ConditionType.PriceChange,
-            Description = "등락률: [일봉] 0봉 전 종가 대비 -7.0% ~ 0.0%",
-            IsEnabled = true,
-            IsConditionMet = false,
-            StatusMessage = "⏳ 평가 대기 중"
-        };
-        
-        Conditions.Add(newCondition);
-        UpdateLogicExpression();
+            // TODO: 조건 추가 다이얼로그 열기
+            // 임시로 샘플 조건 추가
+            var newId = GetNextConditionId();
+            var newCondition = new ConditionItemViewModel
+            {
+                Id = newId,
+                Type = ConditionType.PriceChange,
+                Description = "등락률: [일봉] 0봉 전 종가 대비 -7.0% ~ 0.0%",
+                IsEnabled = true,
+                IsConditionMet = false,
+                StatusMessage = "⏳ 평가 대기 중"
+            };
+
+            Conditions.Add(newCondition);
+            UpdateLogicExpression();
+
+            // Command CanExecute 재평가
+            CommandManager.InvalidateRequerySuggested();
+        }
+        catch (Exception ex)
+        {
+            // TODO: 로깅 서비스 추가 후 로그 기록
+            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to add condition: {ex.Message}");
+            // TODO: 사용자에게 에러 메시지 표시
+        }
     }
 
     private void ExecuteEditCondition(ConditionItemViewModel? condition)
@@ -103,10 +120,22 @@ public class ConditionBuilderViewModel : ViewModelBase
     private void ExecuteRemoveCondition(ConditionItemViewModel? condition)
     {
         if (condition == null) return;
-        
-        Conditions.Remove(condition);
-        ReassignConditionIds();
-        UpdateLogicExpression();
+
+        try
+        {
+            Conditions.Remove(condition);
+            ReassignConditionIds();
+            UpdateLogicExpression();
+
+            // Command CanExecute 재평가
+            CommandManager.InvalidateRequerySuggested();
+        }
+        catch (Exception ex)
+        {
+            // TODO: 로깅 서비스 추가 후 로그 기록
+            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to remove condition: {ex.Message}");
+            // TODO: 사용자에게 에러 메시지 표시
+        }
     }
 
     private void ExecuteSaveConditions()
@@ -117,6 +146,46 @@ public class ConditionBuilderViewModel : ViewModelBase
     private void ExecuteTestConditions()
     {
         // TODO: 조건식 테스트 실행 로직 구현
+    }
+
+    #endregion
+
+    #region Event Handlers
+
+    /// <summary>
+    /// Conditions 컬렉션 변경 시 호출
+    /// </summary>
+    private void OnConditionsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // 새로 추가된 항목의 PropertyChanged 구독
+        if (e.NewItems != null)
+        {
+            foreach (ConditionItemViewModel item in e.NewItems)
+            {
+                item.PropertyChanged += OnConditionItemPropertyChanged;
+            }
+        }
+
+        // 제거된 항목의 PropertyChanged 구독 해제
+        if (e.OldItems != null)
+        {
+            foreach (ConditionItemViewModel item in e.OldItems)
+            {
+                item.PropertyChanged -= OnConditionItemPropertyChanged;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 개별 조건 항목의 속성 변경 시 호출
+    /// </summary>
+    private void OnConditionItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // IsEnabled 속성이 변경되면 논리식 업데이트
+        if (e.PropertyName == nameof(ConditionItemViewModel.IsEnabled))
+        {
+            UpdateLogicExpression();
+        }
     }
 
     #endregion
