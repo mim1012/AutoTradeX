@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AutoTrader.UI"
         xmlns:vm="clr-namespace:AutoTrader.UI.ViewModels"
+        xmlns:views="clr-namespace:AutoTrader.UI.Views"
         mc:Ignorable="d"
         Title="AutoTradeX - 미국주식 자동매매 시스템" 
         Height="900" Width="1400"
@@ -48,13 +49,12 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="15,8"/>
             <Setter Property="Margin" Value="5"/>
-            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" 
-                                CornerRadius="4"
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="5"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -63,7 +63,7 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#005A9E"/>
+                    <Setter Property="Opacity" Value="0.9"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -136,17 +136,12 @@
             <!-- 2-3. 시장 상태 -->
             <Border Grid.Column="2" Style="{StaticResource CardStyle}">
                 <StackPanel>
-                    <TextBlock Text="🌐 미국 시장 상태" Style="{StaticResource HeaderTextStyle}"/>
+                    <TextBlock Text="🌍 미국 시장 상태" Style="{StaticResource HeaderTextStyle}"/>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="상태: " Style="{StaticResource StatusTextStyle}"/>
                         <TextBlock Text="{Binding MarketStatus}" 
                                    Style="{StaticResource StatusTextStyle}"
                                    FontWeight="Bold"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="마감 시간: " Style="{StaticResource StatusTextStyle}"/>
-                        <TextBlock Text="{Binding MarketCloseTime}" 
-                                   Style="{StaticResource StatusTextStyle}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="서머타임: " Style="{StaticResource StatusTextStyle}"/>
@@ -157,146 +152,157 @@
             </Border>
         </Grid>
 
-        <!-- 3. 메인 컨텐츠 영역 -->
-        <Grid Grid.Row="2" Margin="0,10,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+        <!-- 3. 메인 컨텐츠 영역 (TabControl) -->
+        <TabControl Grid.Row="2" Margin="0,10,0,0">
+            
+            <!-- Tab 1: 종목 감시 -->
+            <TabItem Header="📊 종목 감시">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-            <!-- 3-1. 왼쪽: 종목 리스트 -->
-            <Grid Grid.Column="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                    <!-- 왼쪽: 종목 리스트 -->
+                    <Grid Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
 
-                <!-- 거래대금 상위 300 -->
-                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="5,5,5,5">
-                    <DockPanel>
-                        <TextBlock Text="📊 거래대금 상위 300 종목" 
-                                   Style="{StaticResource HeaderTextStyle}"
-                                   DockPanel.Dock="Top"/>
-                        <DataGrid ItemsSource="{Binding Top300Stocks}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  GridLinesVisibility="Horizontal"
-                                  HeadersVisibility="Column"
-                                  RowBackground="White"
-                                  AlternatingRowBackground="#F9F9F9"
-                                  BorderThickness="0">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="순위" Binding="{Binding Rank}" Width="50"/>
-                                <DataGridTextColumn Header="종목코드" Binding="{Binding Symbol}" Width="80"/>
-                                <DataGridTextColumn Header="종목명" Binding="{Binding Name}" Width="*"/>
-                                <DataGridTextColumn Header="현재가" Binding="{Binding CurrentPrice, StringFormat=\{0:C2\}}" Width="100"/>
-                                <DataGridTextColumn Header="등락률" Binding="{Binding ChangeRate, StringFormat=\{0:F2\}%}" Width="80"/>
-                                <DataGridTextColumn Header="거래대금" Binding="{Binding TradeAmount, StringFormat=\{0:N0\}}" Width="120"/>
-                                <DataGridCheckBoxColumn Header="조건충족" Binding="{Binding IsConditionMet}" Width="70"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </DockPanel>
-                </Border>
+                        <!-- 거래대금 상위 300 -->
+                        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="5">
+                            <DockPanel>
+                                <TextBlock Text="📊 거래대금 상위 300 종목" 
+                                           Style="{StaticResource HeaderTextStyle}"
+                                           DockPanel.Dock="Top"/>
+                                <DataGrid ItemsSource="{Binding Top300Stocks}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          GridLinesVisibility="Horizontal"
+                                          HeadersVisibility="Column"
+                                          RowBackground="White"
+                                          AlternatingRowBackground="#F9F9F9"
+                                          BorderThickness="0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="순위" Binding="{Binding Rank}" Width="50"/>
+                                        <DataGridTextColumn Header="종목코드" Binding="{Binding Symbol}" Width="80"/>
+                                        <DataGridTextColumn Header="종목명" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="현재가" Binding="{Binding CurrentPrice, StringFormat=\{0:C2\}}" Width="100"/>
+                                        <DataGridTextColumn Header="등락률" Binding="{Binding ChangeRate, StringFormat=\{0:F2\}%}" Width="80"/>
+                                        <DataGridTextColumn Header="거래대금" Binding="{Binding TradeAmount, StringFormat=\{0:N0\}}" Width="120"/>
+                                        <DataGridCheckBoxColumn Header="조건충족" Binding="{Binding IsConditionMet}" Width="70"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </Border>
 
-                <!-- 조건 충족 후보 -->
-                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="5,5,5,5">
-                    <DockPanel>
-                        <TextBlock Text="✅ 조건 충족 후보 종목" 
-                                   Style="{StaticResource HeaderTextStyle}"
-                                   DockPanel.Dock="Top"/>
-                        <DataGrid ItemsSource="{Binding CandidateStocks}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  GridLinesVisibility="Horizontal"
-                                  HeadersVisibility="Column"
-                                  RowBackground="#E8F5E9"
-                                  BorderThickness="0">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="종목코드" Binding="{Binding Symbol}" Width="100"/>
-                                <DataGridTextColumn Header="종목명" Binding="{Binding Name}" Width="*"/>
-                                <DataGridTextColumn Header="현재가" Binding="{Binding CurrentPrice, StringFormat=\{0:C2\}}" Width="100"/>
-                                <DataGridTextColumn Header="등락률" Binding="{Binding ChangeRate, StringFormat=\{0:F2\}%}" Width="100"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </DockPanel>
-                </Border>
-            </Grid>
+                        <!-- 조건 충족 후보 -->
+                        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="5">
+                            <DockPanel>
+                                <TextBlock Text="✅ 조건 충족 후보 종목" 
+                                           Style="{StaticResource HeaderTextStyle}"
+                                           DockPanel.Dock="Top"/>
+                                <DataGrid ItemsSource="{Binding CandidateStocks}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          GridLinesVisibility="Horizontal"
+                                          HeadersVisibility="Column"
+                                          RowBackground="#E8F5E9"
+                                          BorderThickness="0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="종목코드" Binding="{Binding Symbol}" Width="100"/>
+                                        <DataGridTextColumn Header="종목명" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="현재가" Binding="{Binding CurrentPrice, StringFormat=\{0:C2\}}" Width="100"/>
+                                        <DataGridTextColumn Header="등락률" Binding="{Binding ChangeRate, StringFormat=\{0:F2\}%}" Width="100"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
 
-            <!-- 3-2. 오른쪽: 설정 및 상태 -->
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                    <!-- 오른쪽: 설정 및 상태 -->
+                    <Grid Grid.Column="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
 
-                <!-- 매매 설정 -->
-                <Border Grid.Row="0" Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="⚙️ 매매 설정" Style="{StaticResource HeaderTextStyle}"/>
-                        
-                        <TextBlock Text="매수 비율 (%)" Margin="0,5,0,5"/>
-                        <TextBox Text="{Binding AllocationPercent, UpdateSourceTrigger=PropertyChanged}" 
-                                 Padding="5"
-                                 FontSize="14"/>
+                        <!-- 매매 설정 -->
+                        <Border Grid.Row="0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="⚙️ 매매 설정" Style="{StaticResource HeaderTextStyle}"/>
+                                
+                                <TextBlock Text="매수 비율 (%)" Margin="0,5,0,5"/>
+                                <TextBox Text="{Binding AllocationPercent, UpdateSourceTrigger=PropertyChanged}" 
+                                         Padding="5"
+                                         FontSize="14"/>
 
-                        <CheckBox Content="보유 종목 재진입 방지" 
-                                  IsChecked="{Binding PreventReEntry}"
-                                  Margin="0,10,0,0"
-                                  FontSize="14"/>
-                    </StackPanel>
-                </Border>
+                                <CheckBox Content="보유 종목 재진입 방지" 
+                                          IsChecked="{Binding PreventReEntry}"
+                                          Margin="0,10,0,0"
+                                          FontSize="14"/>
+                            </StackPanel>
+                        </Border>
 
-                <!-- 실시간 상태 -->
-                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="5,10,5,5">
-                    <StackPanel>
-                        <TextBlock Text="⏱️ 실시간 상태" Style="{StaticResource HeaderTextStyle}"/>
-                        
-                        <TextBlock Text="장마감 카운트다운" Margin="0,5,0,5"/>
-                        <TextBlock Text="{Binding CountdownText}" 
-                                   FontSize="24"
-                                   FontWeight="Bold"
-                                   Foreground="#D32F2F"
-                                   HorizontalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
+                        <!-- 실시간 상태 -->
+                        <Border Grid.Row="1" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="⏱️ 실시간 상태" Style="{StaticResource HeaderTextStyle}"/>
+                                <TextBlock Text="{Binding CountdownText}" 
+                                           Style="{StaticResource StatusTextStyle}"
+                                           FontSize="20"
+                                           FontWeight="Bold"
+                                           Foreground="#D32F2F"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
 
-                <!-- 주문 예정 -->
-                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="5,5,5,5">
-                    <DockPanel>
-                        <TextBlock Text="🎯 주문 예정 종목" 
-                                   Style="{StaticResource HeaderTextStyle}"
-                                   DockPanel.Dock="Top"/>
-                        <ListBox ItemsSource="{Binding OrderPendingStocks}"
-                                 BorderThickness="0"
-                                 Background="Transparent">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#FFF3E0" 
-                                            CornerRadius="4" 
-                                            Padding="10" 
-                                            Margin="0,5,0,5">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Symbol}" 
-                                                       FontWeight="Bold" 
-                                                       FontSize="16"/>
-                                            <TextBlock Text="{Binding Name}" 
-                                                       Foreground="#666"/>
-                                            <TextBlock>
-                                                <Run Text="등락률: "/>
-                                                <Run Text="{Binding ChangeRate, StringFormat=\{0:F2\}%}" 
-                                                     FontWeight="Bold" 
-                                                     Foreground="#D32F2F"/>
-                                            </TextBlock>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </DockPanel>
-                </Border>
-            </Grid>
-        </Grid>
+                        <!-- 주문 예정 목록 -->
+                        <Border Grid.Row="2" Style="{StaticResource CardStyle}">
+                            <DockPanel>
+                                <TextBlock Text="🎯 주문 예정 종목" 
+                                           Style="{StaticResource HeaderTextStyle}"
+                                           DockPanel.Dock="Top"/>
+                                <ListBox ItemsSource="{Binding OrderPendingStocks}"
+                                         BorderThickness="0"
+                                         Background="Transparent">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#FFF3E0" 
+                                                    CornerRadius="5" 
+                                                    Padding="10" 
+                                                    Margin="0,0,0,5">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Symbol}" 
+                                                               FontWeight="Bold" 
+                                                               FontSize="16"/>
+                                                    <TextBlock Text="{Binding Name}" 
+                                                               Foreground="#666"/>
+                                                    <TextBlock>
+                                                        <Run Text="등락률: "/>
+                                                        <Run Text="{Binding ChangeRate, StringFormat=\{0:F2\}%}" 
+                                                             FontWeight="Bold" 
+                                                             Foreground="#D32F2F"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+            
+            <!-- Tab 2: 조건식 설정 -->
+            <TabItem Header="⚙️ 조건식 설정">
+                <views:ConditionBuilderControl/>
+            </TabItem>
+            
+        </TabControl>
 
         <!-- 4. 하단: 로그 출력 -->
         <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,10,0,0">
