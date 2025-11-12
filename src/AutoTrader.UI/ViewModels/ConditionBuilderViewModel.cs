@@ -5,6 +5,9 @@ using System.Linq;
 using System.Windows.Input;
 using AutoTrader.UI.Commands;
 using AutoTrader.UI.Models;
+using AutoTrader.UI.Services;
+using AutoTrader.Core.Services.Trading;
+using AutoTrader.Core.Models.Trading;
 
 namespace AutoTrader.UI.ViewModels;
 
@@ -15,9 +18,12 @@ public class ConditionBuilderViewModel : ViewModelBase
 {
     private string _logicExpression = string.Empty;
     private string _logicExplanation = string.Empty;
+    private readonly ConditionMappingService _mappingService;
+    private readonly IConditionEvaluator? _conditionEvaluator;
 
     public ConditionBuilderViewModel()
     {
+        _mappingService = new ConditionMappingService();
         Conditions = new ObservableCollection<ConditionItemViewModel>();
 
         // Conditions 컬렉션 변경 이벤트 구독
@@ -32,6 +38,11 @@ public class ConditionBuilderViewModel : ViewModelBase
 
         // 초기 논리식 설정
         UpdateLogicExpression();
+    }
+
+    public ConditionBuilderViewModel(IConditionEvaluator conditionEvaluator) : this()
+    {
+        _conditionEvaluator = conditionEvaluator;
     }
 
     #region Properties
@@ -250,6 +261,15 @@ public class ConditionBuilderViewModel : ViewModelBase
             var ids = string.Join(", ", enabledConditions.Select(c => c.Id));
             LogicExplanation = $"조건 {ids}가 모두 충족되어야 합니다.";
         }
+    }
+
+    /// <summary>
+    /// UI 조건을 Core CompositeCondition으로 변환
+    /// </summary>
+    public CompositeCondition GetCompositeCondition()
+    {
+        var logic = ConditionLogic.And; // 기본값: AND 연산
+        return _mappingService.MapToCompositeCondition(Conditions.ToList(), logic);
     }
 
     #endregion
