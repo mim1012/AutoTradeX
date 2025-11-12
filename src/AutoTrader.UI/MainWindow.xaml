@@ -7,14 +7,10 @@
         xmlns:vm="clr-namespace:AutoTrader.UI.ViewModels"
         xmlns:views="clr-namespace:AutoTrader.UI.Views"
         mc:Ignorable="d"
-        Title="AutoTradeX - 미국주식 자동매매 시스템" 
+        Title="AutoTradeX - 미국주식 자동매매 시스템"
         Height="900" Width="1400"
         WindowStartupLocation="CenterScreen"
         Background="#F5F5F5">
-    
-    <Window.DataContext>
-        <vm:MainViewModel/>
-    </Window.DataContext>
 
     <Window.Resources>
         <!-- 스타일 정의 -->

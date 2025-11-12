@@ -1,11 +1,11 @@
 using AutoTrader.UI.Models;
+using AutoTrader.Core.Services.Stock;
 using System.Linq;
 
 namespace AutoTrader.UI.Services;
 
 /// <summary>
 /// UI와 백엔드 Trading 로직을 연결하는 서비스 구현
-/// TODO: 실제 AutoTrader.Core 서비스와 연결
 /// </summary>
 public class TradingService : ITradingService
 {
@@ -13,11 +13,17 @@ public class TradingService : ITradingService
     private readonly List<StockInfo> _top300Stocks = new();
     private readonly List<StockInfo> _candidateStocks = new();
     private readonly List<StockInfo> _orderPendingStocks = new();
+    private readonly ITop300StockService? _top300Service;
 
     public bool IsConnected => _isConnected;
 
     public event EventHandler<string>? LogReceived;
     public event EventHandler? StocksUpdated;
+
+    public TradingService(ITop300StockService? top300Service = null)
+    {
+        _top300Service = top300Service;
+    }
 
     public async Task StartAsync()
     {
@@ -40,12 +46,61 @@ public class TradingService : ITradingService
     {
         LogReceived?.Invoke(this, "[INFO] 거래대금 상위 300 종목 조회 중...");
 
-        // TODO: 실제 KIS API 호출
-        await Task.Delay(1000);
-
         _top300Stocks.Clear();
 
-        // 샘플 데이터 300개 생성
+        try
+        {
+            if (_top300Service != null)
+            {
+                // 실제 API 호출하여 Top300 갱신
+                await _top300Service.RefreshTop300Async();
+
+                // 캐시된 데이터 가져오기
+                var cachedStocks = _top300Service.GetCachedTop300();
+
+                // Core DTO를 UI Model로 변환
+                foreach (var stock in cachedStocks)
+                {
+                    var changeRate = stock.ChangeRateDecimal;
+                    var isConditionMet = changeRate >= -7 && changeRate <= 0; // 등락률 조건
+
+                    _top300Stocks.Add(new StockInfo
+                    {
+                        Rank = stock.RankNumber,
+                        Symbol = stock.Symbol,
+                        Name = stock.Name,
+                        CurrentPrice = stock.CurrentPrice,
+                        ChangeRate = changeRate,
+                        TradeAmount = decimal.TryParse(stock.TradeAmount, out var amt) ? amt : 0,
+                        IsConditionMet = isConditionMet,
+                        IsCandidate = false // CandidateTracker에서 관리
+                    });
+                }
+
+                LogReceived?.Invoke(this, $"[SUCCESS] {_top300Stocks.Count}개 종목 조회 완료 (실제 API)");
+            }
+            else
+            {
+                // Fallback: 샘플 데이터 생성
+                LogReceived?.Invoke(this, "[WARNING] Core 서비스 미연결 - 샘플 데이터 사용");
+                await GenerateSampleDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            LogReceived?.Invoke(this, $"[ERROR] API 조회 실패: {ex.Message}");
+            LogReceived?.Invoke(this, "[INFO] 샘플 데이터로 전환");
+            await GenerateSampleDataAsync();
+        }
+
+        StocksUpdated?.Invoke(this, EventArgs.Empty);
+        return _top300Stocks;
+    }
+
+    private async Task GenerateSampleDataAsync()
+    {
+        await Task.Delay(1000);
+
         var random = new Random();
         var sampleStocks = new[]
         {
@@ -75,10 +130,7 @@ public class TradingService : ITradingService
             });
         }
 
-        LogReceived?.Invoke(this, $"[SUCCESS] {_top300Stocks.Count}개 종목 조회 완료");
-        StocksUpdated?.Invoke(this, EventArgs.Empty);
-
-        return _top300Stocks;
+        LogReceived?.Invoke(this, $"[SUCCESS] {_top300Stocks.Count}개 샘플 종목 생성 완료");
     }
 
     public List<StockInfo> GetCandidateStocks()
