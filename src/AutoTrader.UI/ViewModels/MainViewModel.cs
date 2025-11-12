@@ -1,9 +1,15 @@
+using AutoTrader.Core.Data;
+using AutoTrader.Core.Models.Database;
+using AutoTrader.Core.Repositories;
 using AutoTrader.UI.Commands;
 using AutoTrader.UI.Models;
 using AutoTrader.UI.Services;
+using AutoTrader.UI.Views;
 using System.Collections.ObjectModel;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using System.Windows.Media;
 
 namespace AutoTrader.UI.ViewModels;
 
@@ -16,6 +22,11 @@ public class MainViewModel : ViewModelBase
 
     private readonly ITradingService _tradingService;
     private readonly DispatcherTimer _updateTimer;
+    private readonly AccountRepository? _accountRepository;
+    private readonly ConditionSetRepository? _conditionSetRepository;
+    private Account? _activeAccount;
+    private ConditionSet? _activeConditionSet;
+    private bool _isSystemRunning;
     private string _apiConnectionStatus = "연결 대기 중...";
     private string _accountBalance = "$0.00";
     private string _totalAssets = "$0.00";
@@ -141,6 +152,76 @@ public class MainViewModel : ViewModelBase
     /// </summary>
     public ConditionBuilderViewModel ConditionBuilder { get; }
 
+    /// <summary>
+    /// 활성 계좌 표시 문자열
+    /// </summary>
+    public string ActiveAccountDisplay =>
+        _activeAccount != null
+            ? $"{_activeAccount.AccountNumber} ({_activeAccount.AccountName})"
+            : "활성 계좌 없음";
+
+    /// <summary>
+    /// 조건식 표시 문자열
+    /// </summary>
+    public string ConditionSetDisplay
+    {
+        get
+        {
+            if (_activeConditionSet == null || _activeConditionSet.Conditions.Count == 0)
+                return "조건식 미설정";
+            return $"조건 {_activeConditionSet.Conditions.Count}개";
+        }
+    }
+
+    /// <summary>
+    /// 시스템 상태 텍스트
+    /// </summary>
+    public string SystemStatusText =>
+        _isSystemRunning ? "🟢 실행 중" : "🔴 중지됨";
+
+    /// <summary>
+    /// 시작/중지 버튼 텍스트
+    /// </summary>
+    public string StartStopButtonText =>
+        _isSystemRunning ? "⏸️ 자동매매 중지" : "▶️ 자동매매 시작";
+
+    /// <summary>
+    /// 시스템 상태 색상
+    /// </summary>
+    public Brush SystemStatusColor =>
+        _isSystemRunning ? new SolidColorBrush(Color.FromRgb(76, 175, 80)) : new SolidColorBrush(Color.FromRgb(244, 67, 54));
+
+    /// <summary>
+    /// 시작/중지 버튼 배경색
+    /// </summary>
+    public Brush StartStopButtonBackground =>
+        _isSystemRunning ? new SolidColorBrush(Color.FromRgb(244, 67, 54)) : new SolidColorBrush(Color.FromRgb(76, 175, 80));
+
+    /// <summary>
+    /// 마지막 업데이트 시간
+    /// </summary>
+    public string LastUpdateTime => $"마지막 업데이트: {DateTime.Now:HH:mm:ss}";
+
+    /// <summary>
+    /// Top 300 종목 수
+    /// </summary>
+    public string Top300StocksCount => $"({Top300Stocks.Count}개)";
+
+    /// <summary>
+    /// 조건 충족 종목 수
+    /// </summary>
+    public string MatchedStocksCount => $"({CandidateStocks.Count}개)";
+
+    /// <summary>
+    /// 조건 충족 종목 (CandidateStocks의 별칭)
+    /// </summary>
+    public ObservableCollection<StockInfo> MatchedStocks => CandidateStocks;
+
+    /// <summary>
+    /// 시스템 로그 (LogText의 별칭)
+    /// </summary>
+    public string SystemLogs => LogText;
+
     #endregion
 
     #region Commands
@@ -149,6 +230,11 @@ public class MainViewModel : ViewModelBase
     public ICommand StopSystemCommand { get; }
     public ICommand RefreshTop300Command { get; }
     public ICommand ClearLogCommand { get; }
+    public ICommand OpenAccountManagementCommand { get; }
+    public ICommand OpenConditionEditorCommand { get; }
+    public ICommand ToggleSystemCommand { get; }
+    public ICommand SaveLogsCommand { get; }
+    public ICommand ClearLogsCommand { get; }
 
     #endregion
 
@@ -158,9 +244,14 @@ public class MainViewModel : ViewModelBase
     {
     }
 
-    public MainViewModel(ITradingService tradingService)
+    public MainViewModel(
+        ITradingService tradingService,
+        AccountRepository? accountRepository = null,
+        ConditionSetRepository? conditionSetRepository = null)
     {
         _tradingService = tradingService;
+        _accountRepository = accountRepository;
+        _conditionSetRepository = conditionSetRepository;
 
         // ViewModel 초기화
         ConditionBuilder = new ConditionBuilderViewModel();
@@ -174,6 +265,11 @@ public class MainViewModel : ViewModelBase
         StopSystemCommand = new RelayCommand(async _ => await StopSystem());
         RefreshTop300Command = new RelayCommand(async _ => await RefreshTop300());
         ClearLogCommand = new RelayCommand(_ => ClearLog());
+        OpenAccountManagementCommand = new RelayCommand(_ => OpenAccountManagement());
+        OpenConditionEditorCommand = new RelayCommand(_ => OpenConditionEditor());
+        ToggleSystemCommand = new RelayCommand(_ => ToggleSystem());
+        SaveLogsCommand = new RelayCommand(_ => SaveLogs());
+        ClearLogsCommand = new RelayCommand(_ => ClearLog());
 
         // 타이머 설정 (1초마다 UI 업데이트)
         _updateTimer = new DispatcherTimer
@@ -196,6 +292,7 @@ public class MainViewModel : ViewModelBase
         AddLog("[INFO] AutoTradeX 시스템 초기화 중...");
         UpdateMarketStatus();
         await UpdateAccountInfo();
+        await LoadActiveAccountAsync();
         AddLog("[INFO] 초기화 완료. 시스템 시작 버튼을 눌러주세요.");
     }
 
@@ -305,6 +402,108 @@ public class MainViewModel : ViewModelBase
     {
         UpdateCountdown();
         UpdateMarketStatus();
+    }
+
+    private async Task LoadActiveAccountAsync()
+    {
+        if (_accountRepository == null) return;
+
+        try
+        {
+            _activeAccount = await _accountRepository.GetActiveAccountAsync();
+            _activeConditionSet = _activeAccount?.ConditionSet;
+
+            OnPropertyChanged(nameof(ActiveAccountDisplay));
+            OnPropertyChanged(nameof(ConditionSetDisplay));
+
+            AddLog($"[INFO] 활성 계좌 로드: {ActiveAccountDisplay}");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"[ERROR] 활성 계좌 로드 실패: {ex.Message}");
+        }
+    }
+
+    private void OpenAccountManagement()
+    {
+        var dialog = new AccountManagementDialog
+        {
+            Owner = Application.Current.MainWindow
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            _ = LoadActiveAccountAsync();
+        }
+    }
+
+    private void OpenConditionEditor()
+    {
+        if (_activeAccount == null)
+        {
+            MessageBox.Show("활성 계좌를 먼저 선택해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var dialog = new ConditionEditorDialog
+        {
+            Owner = Application.Current.MainWindow
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            _ = LoadActiveAccountAsync();
+        }
+    }
+
+    private void ToggleSystem()
+    {
+        if (_activeAccount == null)
+        {
+            MessageBox.Show("활성 계좌를 먼저 선택해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (_activeConditionSet == null || _activeConditionSet.Conditions.Count == 0)
+        {
+            MessageBox.Show("조건식을 먼저 설정해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _isSystemRunning = !_isSystemRunning;
+
+        OnPropertyChanged(nameof(SystemStatusText));
+        OnPropertyChanged(nameof(StartStopButtonText));
+        OnPropertyChanged(nameof(SystemStatusColor));
+        OnPropertyChanged(nameof(StartStopButtonBackground));
+
+        if (_isSystemRunning)
+        {
+            AddLog("[INFO] 자동매매 시스템 시작");
+            _ = StartSystem();
+        }
+        else
+        {
+            AddLog("[INFO] 자동매매 시스템 중지");
+            _ = StopSystem();
+        }
+    }
+
+    private void SaveLogs()
+    {
+        try
+        {
+            var fileName = $"AutoTradeX_Log_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+            var filePath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), fileName);
+            System.IO.File.WriteAllText(filePath, LogText);
+            MessageBox.Show($"로그가 저장되었습니다.\n{filePath}", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+            AddLog($"[INFO] 로그 저장됨: {filePath}");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"로그 저장 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            AddLog($"[ERROR] 로그 저장 실패: {ex.Message}");
+        }
     }
 
     #endregion

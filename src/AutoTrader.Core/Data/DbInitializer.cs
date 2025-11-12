@@ -20,8 +20,11 @@ namespace AutoTrader.Core.Data
 
             try
             {
-                // EF Core Migrations 적용
-                await context.Database.MigrateAsync();
+                // 데이터베이스가 존재하지 않으면 생성 (Migrations 없이)
+                await context.Database.EnsureCreatedAsync();
+
+                // 또는 EF Core Migrations 적용 (Migrations가 있을 때)
+                // await context.Database.MigrateAsync();
 
                 // 또는 SQL 스크립트 직접 실행
                 // await ExecuteSqlScriptAsync(context, "init_database.sql");

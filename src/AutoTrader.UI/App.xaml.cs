@@ -2,9 +2,13 @@
 using System.Data;
 using System.IO;
 using System.Windows;
+using AutoTrader.Core.Data;
+using AutoTrader.Core.Repositories;
 using AutoTrader.Core.Services.Stock;
 using AutoTrader.UI.Services;
 using AutoTrader.UI.ViewModels;
+using AutoTrader.UI.Views;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -35,6 +39,14 @@ public partial class App : Application
                 // HttpClient 등록
                 services.AddHttpClient();
 
+                // DbContext 등록
+                services.AddDbContext<AppDbContext>(options =>
+                    options.UseSqlite("Data Source=autotrader.db"));
+
+                // Repository 등록
+                services.AddScoped<AccountRepository>();
+                services.AddScoped<ConditionSetRepository>();
+
                 // Core 서비스 등록
                 services.AddSingleton<AutoTrader.Core.Services.Auth.IKisAuthService, AutoTrader.Core.Services.Auth.KisAuthService>();
                 services.AddSingleton<AutoTrader.Core.Services.Api.IKisApiClient, AutoTrader.Core.Services.Api.KisApiClient>();
@@ -51,7 +63,17 @@ public partial class App : Application
                 });
 
                 // ViewModels 등록
-                services.AddTransient<MainViewModel>();
+                services.AddTransient<MainDashboardViewModel>();
+                services.AddTransient<MainViewModel>(sp =>
+                {
+                    var tradingService = sp.GetRequiredService<ITradingService>();
+                    var accountRepo = sp.GetRequiredService<AccountRepository>();
+                    var conditionRepo = sp.GetRequiredService<ConditionSetRepository>();
+                    return new MainViewModel(tradingService, accountRepo, conditionRepo);
+                });
+
+                // Views 등록
+                services.AddTransient<MainDashboard>();
                 services.AddTransient<MainWindow>();
             })
             .Build();
@@ -61,13 +83,18 @@ public partial class App : Application
     {
         await _host!.StartAsync();
 
-        var mainWindow = _host.Services.GetRequiredService<MainWindow>();
+        // DB 초기화
+        using (var scope = _host.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await DbInitializer.InitializeAsync(dbContext);
+        }
 
-        // MainViewModel을 DI에서 가져와서 DataContext 설정
+        // MainDashboard를 시작 화면으로 표시
+        var mainDashboard = _host.Services.GetRequiredService<MainDashboard>();
         var mainViewModel = _host.Services.GetRequiredService<MainViewModel>();
-        mainWindow.DataContext = mainViewModel;
-
-        mainWindow.Show();
+        mainDashboard.DataContext = mainViewModel;
+        mainDashboard.Show();
 
         base.OnStartup(e);
     }

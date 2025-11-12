@@ -17,8 +17,8 @@ public class OrderExecutor : IOrderExecutor
     private readonly TradingSettings _tradingSettings;
     private readonly ILogger<OrderExecutor> _logger;
 
-    // 미국 동부 시간 (ET) 마감 10분 전 시각
-    private static readonly TimeSpan OrderStartTime = new(15, 50, 0); // 15:50 ET
+    // 미국 동부 시간 (ET) 마감 20분 전 시각
+    private static readonly TimeSpan OrderStartTime = new(15, 40, 0); // 15:40 ET
     private static readonly TimeSpan OrderEndTime = new(16, 0, 0);    // 16:00 ET (마감)
 
     public OrderExecutor(
