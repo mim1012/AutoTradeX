@@ -1,4 +1,5 @@
 using AutoTrader.UI.Models;
+using System.Linq;
 
 namespace AutoTrader.UI.Services;
 
@@ -38,46 +39,41 @@ public class TradingService : ITradingService
     public async Task<List<StockInfo>> GetTop300StocksAsync()
     {
         LogReceived?.Invoke(this, "[INFO] 거래대금 상위 300 종목 조회 중...");
-        
+
         // TODO: 실제 KIS API 호출
         await Task.Delay(1000);
 
         _top300Stocks.Clear();
-        
-        // 샘플 데이터
-        _top300Stocks.Add(new StockInfo
-        {
-            Rank = 1,
-            Symbol = "TSLA",
-            Name = "Tesla Inc",
-            CurrentPrice = 245.50m,
-            ChangeRate = -3.25m,
-            TradeAmount = 15000000000m,
-            IsConditionMet = true
-        });
 
-        _top300Stocks.Add(new StockInfo
+        // 샘플 데이터 300개 생성
+        var random = new Random();
+        var sampleStocks = new[]
         {
-            Rank = 2,
-            Symbol = "AAPL",
-            Name = "Apple Inc",
-            CurrentPrice = 185.20m,
-            ChangeRate = 1.15m,
-            TradeAmount = 12000000000m,
-            IsConditionMet = false
-        });
+            "TSLA", "AAPL", "NVDA", "MSFT", "GOOGL", "AMZN", "META", "NFLX", "AMD", "INTC",
+            "BA", "DIS", "JPM", "GS", "V", "MA", "PYPL", "SQ", "COIN", "HOOD",
+            "UBER", "LYFT", "ABNB", "DASH", "RBLX", "SNOW", "PLTR", "SOFI", "NIO", "LCID"
+        };
 
-        _top300Stocks.Add(new StockInfo
+        for (int i = 0; i < 300; i++)
         {
-            Rank = 3,
-            Symbol = "NVDA",
-            Name = "NVIDIA Corp",
-            CurrentPrice = 520.30m,
-            ChangeRate = -5.80m,
-            TradeAmount = 10000000000m,
-            IsConditionMet = true,
-            IsCandidate = true
-        });
+            var baseSymbol = sampleStocks[i % sampleStocks.Length];
+            var suffix = i / sampleStocks.Length > 0 ? (i / sampleStocks.Length).ToString() : "";
+
+            var changeRate = (decimal)(random.NextDouble() * 20 - 10); // -10% ~ +10%
+            var isConditionMet = changeRate >= -7 && changeRate <= 0; // 등락률 조건
+
+            _top300Stocks.Add(new StockInfo
+            {
+                Rank = i + 1,
+                Symbol = baseSymbol + suffix,
+                Name = $"{baseSymbol} Inc{suffix}",
+                CurrentPrice = (decimal)(random.NextDouble() * 500 + 50), // $50 ~ $550
+                ChangeRate = changeRate,
+                TradeAmount = (decimal)(random.NextDouble() * 10000000000 + 1000000000), // $1B ~ $11B
+                IsConditionMet = isConditionMet,
+                IsCandidate = isConditionMet && random.Next(0, 3) == 0 // 조건 충족 중 일부만 후보
+            });
+        }
 
         LogReceived?.Invoke(this, $"[SUCCESS] {_top300Stocks.Count}개 종목 조회 완료");
         StocksUpdated?.Invoke(this, EventArgs.Empty);
@@ -87,6 +83,9 @@ public class TradingService : ITradingService
 
     public List<StockInfo> GetCandidateStocks()
     {
+        // Top300에서 조건 충족 종목만 필터링
+        _candidateStocks.Clear();
+        _candidateStocks.AddRange(_top300Stocks.Where(s => s.IsCandidate).ToList());
         return _candidateStocks;
     }
 
