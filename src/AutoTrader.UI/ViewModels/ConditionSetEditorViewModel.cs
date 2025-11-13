@@ -2,6 +2,7 @@ using AutoTrader.Core.Data;
 using AutoTrader.Core.Models.Database;
 using AutoTrader.Core.Repositories;
 using AutoTrader.UI.Models;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -266,14 +267,14 @@ namespace AutoTrader.UI.ViewModels
                 {
                     ConditionOrder = i + 1,
                     ConditionType = condition.ConditionType,
-                    Parameters = condition.Parameters ?? "{}",
+                    Parameters = System.Text.Json.JsonSerializer.Serialize(condition.Parameters ?? new Dictionary<string, object>()),
                     LogicOperator = i < Conditions.Count - 1 ? "AND" : null
                 };
                 conditionSet.Conditions.Add(dbCondition);
             }
 
             // DB에 저장
-            await _conditionSetRepository.UpsertConditionSetAsync(conditionSet);
+            await _conditionSetRepository.UpsertConditionSetAsync(_accountId.Value, conditionSet.Name, conditionSet.Conditions.ToList());
         }
 
         /// <summary>

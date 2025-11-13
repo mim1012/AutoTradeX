@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using AutoTrader.UI.ViewModels;
+using AutoTrader.UI.Models;
 
 namespace AutoTrader.UI.Views;
 

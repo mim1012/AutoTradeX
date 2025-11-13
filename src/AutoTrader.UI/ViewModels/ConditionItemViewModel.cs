@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using AutoTrader.UI.Models;
 
@@ -73,4 +74,28 @@ public class ConditionItemViewModel : ViewModelBase
     /// 조건 파라미터 (조건 타입별로 다름)
     /// </summary>
     public Dictionary<string, object> Parameters { get; set; } = new();
+
+    /// <summary>
+    /// 조건 ID (Alias for Id, for compatibility with ConditionSetEditor)
+    /// </summary>
+    public string ConditionId
+    {
+        get => Id;
+        set => Id = value;
+    }
+
+    /// <summary>
+    /// 조건 타입 (Alias for Type, for compatibility with ConditionSetEditor)
+    /// </summary>
+    public string ConditionType
+    {
+        get => Type.ToString();
+        set
+        {
+            if (Enum.TryParse<ConditionType>(value, out var type))
+            {
+                Type = type;
+            }
+        }
+    }
 }

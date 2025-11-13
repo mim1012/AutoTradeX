@@ -195,10 +195,16 @@ namespace AutoTrader.UI.ViewModels
                 return;
             }
 
-            var dialog = new ConditionBuilderDialog
+            var dialog = new ConditionSetEditorDialog
             {
                 Owner = Application.Current.MainWindow
             };
+
+            // ViewModel에 계좌 ID 전달
+            if (dialog.DataContext is ViewModels.ConditionSetEditorViewModel viewModel)
+            {
+                viewModel.LoadConditionSet(_activeAccount.AccountId);
+            }
 
             dialog.ShowDialog();
             // 조건식 변경 후 다시 로드
