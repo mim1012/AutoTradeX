@@ -3,6 +3,7 @@ using AutoTrader.Core.Models.Database;
 using AutoTrader.Core.Repositories;
 using AutoTrader.UI.Commands;
 using AutoTrader.UI.Views;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -35,10 +36,10 @@ namespace AutoTrader.UI.ViewModels
             _conditionSetRepository = new ConditionSetRepository(_dbContext);
 
             // Command 초기화
-            SetActiveAccountCommand = new RelayCommand<Account>(SetActiveAccount);
+            SetActiveAccountCommand = new RelayCommand<AccountViewModel>(SetActiveAccount);
             AddAccountCommand = new RelayCommand(AddAccount);
-            EditAccountCommand = new RelayCommand<Account>(EditAccount);
-            DeleteAccountCommand = new RelayCommand<Account>(DeleteAccount);
+            EditAccountCommand = new RelayCommand<AccountViewModel>(EditAccount);
+            DeleteAccountCommand = new RelayCommand<AccountViewModel>(DeleteAccount);
             ConfirmCommand = new RelayCommand(Confirm);
             CancelCommand = new RelayCommand(Cancel);
 
@@ -109,18 +110,18 @@ namespace AutoTrader.UI.ViewModels
         /// <summary>
         /// 활성 계좌 설정
         /// </summary>
-        private async void SetActiveAccount(Account? account)
+        private async void SetActiveAccount(AccountViewModel? accountViewModel)
         {
-            if (account == null) return;
+            if (accountViewModel == null) return;
 
             try
             {
-                await _accountRepository.SetActiveAccountAsync(account.AccountId);
+                await _accountRepository.SetActiveAccountAsync(accountViewModel.AccountId);
 
                 // UI 업데이트
                 foreach (var acc in Accounts)
                 {
-                    acc.IsActive = acc.AccountId == account.AccountId;
+                    acc.IsActive = acc.AccountId == accountViewModel.AccountId;
                 }
             }
             catch (Exception ex)
@@ -136,7 +137,8 @@ namespace AutoTrader.UI.ViewModels
         {
             var dialog = new AccountDetailDialog
             {
-                Owner = Application.Current.Windows.OfType<AccountManagementDialog>().FirstOrDefault()
+                Owner = Application.Current.Windows.OfType<AccountManagementDialog>().FirstOrDefault(),
+                DataContext = new AccountDetailViewModel(null) // 신규 추가
             };
 
             if (dialog.ShowDialog() == true)
@@ -149,14 +151,14 @@ namespace AutoTrader.UI.ViewModels
         /// <summary>
         /// 계좌 편집
         /// </summary>
-        private void EditAccount(Account? account)
+        private void EditAccount(AccountViewModel? accountViewModel)
         {
-            if (account == null) return;
+            if (accountViewModel == null) return;
 
             var dialog = new AccountDetailDialog
             {
                 Owner = Application.Current.Windows.OfType<AccountManagementDialog>().FirstOrDefault(),
-                DataContext = new AccountDetailViewModel(account.AccountId)
+                DataContext = new AccountDetailViewModel(accountViewModel.AccountId)
             };
 
             if (dialog.ShowDialog() == true)
@@ -169,12 +171,12 @@ namespace AutoTrader.UI.ViewModels
         /// <summary>
         /// 계좌 삭제
         /// </summary>
-        private async void DeleteAccount(Account? account)
+        private async void DeleteAccount(AccountViewModel? accountViewModel)
         {
-            if (account == null) return;
+            if (accountViewModel == null) return;
 
             var result = MessageBox.Show(
-                $"계좌 '{account.AccountNumber}'를 삭제하시겠습니까?\n연결된 조건식도 함께 삭제됩니다.",
+                $"계좌 '{accountViewModel.AccountNumber}'를 삭제하시겠습니까?\n연결된 조건식도 함께 삭제됩니다.",
                 "확인",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
@@ -183,7 +185,7 @@ namespace AutoTrader.UI.ViewModels
             {
                 try
                 {
-                    await _accountRepository.DeleteAccountAsync(account.AccountId);
+                    await _accountRepository.DeleteAccountAsync(accountViewModel.AccountId);
                     await LoadAccountsAsync();
                 }
                 catch (Exception ex)
@@ -198,8 +200,13 @@ namespace AutoTrader.UI.ViewModels
         /// </summary>
         private void Confirm()
         {
-            // 모달 닫기
-            Application.Current.Windows.OfType<AccountManagementDialog>().FirstOrDefault()?.Close();
+            // 모달 닫기 (DialogResult = true로 설정하여 부모에게 변경사항 알림)
+            var dialog = Application.Current.Windows.OfType<AccountManagementDialog>().FirstOrDefault();
+            if (dialog != null)
+            {
+                dialog.DialogResult = true;
+                dialog.Close();
+            }
         }
 
         /// <summary>

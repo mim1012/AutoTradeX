@@ -12,6 +12,23 @@ public partial class ConditionBuilderControl : UserControl
     {
         InitializeComponent();
         // DataContext는 부모 컨테이너나 DI에서 설정됨
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    private void OnDataContextChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)
+    {
+        if (DataContext is ConditionBuilderViewModel viewModel)
+        {
+            // LogicOperator에 따라 RadioButton 초기 상태 설정
+            if (viewModel.LogicOperator.ToUpper() == "AND")
+            {
+                AndRadioButton.IsChecked = true;
+            }
+            else
+            {
+                OrRadioButton.IsChecked = true;
+            }
+        }
     }
 
     /// <summary>
@@ -26,6 +43,28 @@ public partial class ConditionBuilderControl : UserControl
             {
                 viewModel.Conditions.Add(dialog.ResultCondition);
             }
+        }
+    }
+
+    /// <summary>
+    /// AND RadioButton 체크 이벤트
+    /// </summary>
+    private void AndRadioButton_Checked(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is ConditionBuilderViewModel viewModel)
+        {
+            viewModel.LogicOperator = "AND";
+        }
+    }
+
+    /// <summary>
+    /// OR RadioButton 체크 이벤트
+    /// </summary>
+    private void OrRadioButton_Checked(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is ConditionBuilderViewModel viewModel)
+        {
+            viewModel.LogicOperator = "OR";
         }
     }
 }

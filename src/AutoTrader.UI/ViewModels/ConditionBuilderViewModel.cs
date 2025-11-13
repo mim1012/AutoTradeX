@@ -1,13 +1,18 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows.Input;
+using System.Windows;
 using AutoTrader.UI.Commands;
 using AutoTrader.UI.Models;
 using AutoTrader.UI.Services;
 using AutoTrader.Core.Services.Trading;
 using AutoTrader.Core.Models.Trading;
+using AutoTrader.Core.Repositories;
+using AutoTrader.Core.Models.Database;
+using System.Text.Json;
 
 namespace AutoTrader.UI.ViewModels;
 
@@ -18,8 +23,11 @@ public class ConditionBuilderViewModel : ViewModelBase
 {
     private string _logicExpression = string.Empty;
     private string _logicExplanation = string.Empty;
+    private string _logicOperator = "AND"; // 기본값: AND
     private readonly ConditionMappingService _mappingService;
     private readonly IConditionEvaluator? _conditionEvaluator;
+    private readonly AccountRepository? _accountRepository;
+    private readonly ConditionSetRepository? _conditionSetRepository;
 
     public ConditionBuilderViewModel()
     {
@@ -43,6 +51,99 @@ public class ConditionBuilderViewModel : ViewModelBase
     public ConditionBuilderViewModel(IConditionEvaluator conditionEvaluator) : this()
     {
         _conditionEvaluator = conditionEvaluator;
+    }
+
+    public ConditionBuilderViewModel(AccountRepository accountRepository, ConditionSetRepository conditionSetRepository) : this()
+    {
+        _accountRepository = accountRepository;
+        _conditionSetRepository = conditionSetRepository;
+
+        // 저장된 조건식 로드
+        _ = LoadConditionsAsync();
+    }
+
+    /// <summary>
+    /// 활성 계좌의 저장된 조건식 로드
+    /// </summary>
+    private async Task LoadConditionsAsync()
+    {
+        if (_accountRepository == null || _conditionSetRepository == null)
+            return;
+
+        try
+        {
+            var activeAccount = await _accountRepository.GetActiveAccountAsync();
+            if (activeAccount == null)
+                return;
+
+            var conditionSet = await _conditionSetRepository.GetConditionSetByAccountIdAsync(activeAccount.AccountId);
+            if (conditionSet == null || conditionSet.Conditions.Count == 0)
+                return;
+
+            // 기존 조건 클리어
+            Conditions.Clear();
+
+            // DB에서 불러온 조건들을 ViewModel에 추가
+            foreach (var condition in conditionSet.Conditions.OrderBy(c => c.ConditionOrder))
+            {
+                var conditionViewModel = DeserializeCondition(condition);
+                if (conditionViewModel != null)
+                {
+                    Conditions.Add(conditionViewModel);
+
+                    // 첫 번째 조건의 LogicOperator를 기준으로 설정
+                    if (!string.IsNullOrEmpty(condition.LogicOperator))
+                    {
+                        LogicOperator = condition.LogicOperator.ToUpper();
+                    }
+                }
+            }
+
+            UpdateLogicExpression();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to load conditions: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// DB Condition을 ConditionItemViewModel로 변환
+    /// </summary>
+    private ConditionItemViewModel? DeserializeCondition(AutoTrader.Core.Models.Database.Condition condition)
+    {
+        try
+        {
+            var parameters = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(condition.Parameters);
+            if (parameters == null)
+                return null;
+
+            var description = parameters.ContainsKey("Description")
+                ? parameters["Description"].GetString() ?? "조건"
+                : "조건";
+
+            var typeString = parameters.ContainsKey("Type")
+                ? parameters["Type"].GetString()
+                : condition.ConditionType;
+
+            if (!Enum.TryParse<Models.ConditionType>(typeString, out var conditionType))
+                conditionType = Models.ConditionType.PriceChange;
+
+            return new ConditionItemViewModel
+            {
+                Id = ((char)('A' + condition.ConditionOrder - 1)).ToString(),
+                Type = conditionType,
+                Description = description,
+                IsEnabled = true,
+                IsConditionMet = false,
+                StatusMessage = "⏳ 평가 대기 중"
+            };
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to deserialize condition: {ex.Message}");
+            return null;
+        }
     }
 
     #region Properties
@@ -70,6 +171,21 @@ public class ConditionBuilderViewModel : ViewModelBase
         set => SetProperty(ref _logicExplanation, value);
     }
 
+    /// <summary>
+    /// 논리 연산자 (AND 또는 OR)
+    /// </summary>
+    public string LogicOperator
+    {
+        get => _logicOperator;
+        set
+        {
+            if (SetProperty(ref _logicOperator, value))
+            {
+                UpdateLogicExpression();
+            }
+        }
+    }
+
     #endregion
 
     #region Commands
@@ -94,30 +210,38 @@ public class ConditionBuilderViewModel : ViewModelBase
     {
         try
         {
-            // TODO: 조건 추가 다이얼로그 열기
-            // 임시로 샘플 조건 추가
-            var newId = GetNextConditionId();
-            var newCondition = new ConditionItemViewModel
+            // 조건 추가 다이얼로그 열기
+            var dialog = new Views.ConditionEditorDialog();
+
+            // Owner를 현재 활성 윈도우로 설정
+            foreach (Window window in Application.Current.Windows)
             {
-                Id = newId,
-                Type = ConditionType.PriceChange,
-                Description = "등락률: [일봉] 0봉 전 종가 대비 -7.0% ~ 0.0%",
-                IsEnabled = true,
-                IsConditionMet = false,
-                StatusMessage = "⏳ 평가 대기 중"
-            };
+                if (window.IsActive && window is Views.ConditionBuilderDialog)
+                {
+                    dialog.Owner = window;
+                    break;
+                }
+            }
 
-            Conditions.Add(newCondition);
-            UpdateLogicExpression();
+            if (dialog.ShowDialog() == true && dialog.ResultCondition != null)
+            {
+                var newId = GetNextConditionId();
+                var newCondition = dialog.ResultCondition;
+                newCondition.Id = newId;
+                newCondition.IsConditionMet = false;
+                newCondition.StatusMessage = "⏳ 평가 대기 중";
 
-            // Command CanExecute 재평가
-            CommandManager.InvalidateRequerySuggested();
+                Conditions.Add(newCondition);
+                UpdateLogicExpression();
+
+                // Command CanExecute 재평가
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
         catch (Exception ex)
         {
-            // TODO: 로깅 서비스 추가 후 로그 기록
             System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to add condition: {ex.Message}");
-            // TODO: 사용자에게 에러 메시지 표시
+            MessageBox.Show($"조건 추가 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -149,9 +273,84 @@ public class ConditionBuilderViewModel : ViewModelBase
         }
     }
 
-    private void ExecuteSaveConditions()
+    private async void ExecuteSaveConditions()
     {
-        // TODO: 조건식 저장 로직 구현
+        if (_accountRepository == null || _conditionSetRepository == null)
+        {
+            MessageBox.Show("Repository가 초기화되지 않았습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        try
+        {
+            // 활성 계좌 가져오기
+            var activeAccount = await _accountRepository.GetActiveAccountAsync();
+            if (activeAccount == null)
+            {
+                MessageBox.Show("활성 계좌를 먼저 선택해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // 조건이 없으면 저장 안함
+            if (Conditions.Count == 0)
+            {
+                MessageBox.Show("저장할 조건이 없습니다. 조건을 추가해주세요.", "알림", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // 조건 목록 생성
+            var conditionList = new List<AutoTrader.Core.Models.Database.Condition>();
+            int order = 1;
+            var enabledConditionsCount = Conditions.Count(c => c.IsEnabled);
+
+            foreach (var conditionViewModel in Conditions.Where(c => c.IsEnabled))
+            {
+                var condition = new AutoTrader.Core.Models.Database.Condition
+                {
+                    ConditionOrder = order,
+                    ConditionType = conditionViewModel.Type.ToString(),
+                    Parameters = SerializeConditionParameters(conditionViewModel),
+                    LogicOperator = order < enabledConditionsCount ? LogicOperator.ToUpper() : null,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                conditionList.Add(condition);
+                order++;
+            }
+
+            // DB에 저장 (Upsert)
+            var conditionSet = await _conditionSetRepository.UpsertConditionSetAsync(
+                activeAccount.AccountId,
+                $"{activeAccount.AccountName} 조건식",
+                conditionList
+            );
+
+            MessageBox.Show(
+                $"조건식이 저장되었습니다.\n\n" +
+                $"계좌: {activeAccount.AccountNumber}\n" +
+                $"조건 개수: {conditionSet.Conditions.Count}개",
+                "저장 완료",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"조건식 저장 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private string SerializeConditionParameters(ConditionItemViewModel condition)
+    {
+        // 조건 타입별로 파라미터를 JSON으로 직렬화
+        // TODO: 실제 파라미터 값들을 포함한 JSON 생성
+        // 현재는 Description만 저장
+        var parameters = new
+        {
+            Description = condition.Description,
+            Type = condition.Type.ToString()
+        };
+        return JsonSerializer.Serialize(parameters);
     }
 
     private void ExecuteTestConditions()
@@ -248,9 +447,10 @@ public class ConditionBuilderViewModel : ViewModelBase
             return;
         }
 
-        // 논리식 생성 (기본: AND 연산)
-        LogicExpression = string.Join(" and ", enabledConditions.Select(c => c.Id));
-        
+        // 논리식 생성 (AND 또는 OR 연산)
+        var operatorText = LogicOperator.ToUpper() == "OR" ? " or " : " and ";
+        LogicExpression = string.Join(operatorText, enabledConditions.Select(c => c.Id));
+
         // 설명 생성
         if (enabledConditions.Count == 1)
         {
@@ -259,7 +459,14 @@ public class ConditionBuilderViewModel : ViewModelBase
         else
         {
             var ids = string.Join(", ", enabledConditions.Select(c => c.Id));
-            LogicExplanation = $"조건 {ids}가 모두 충족되어야 합니다.";
+            if (LogicOperator.ToUpper() == "OR")
+            {
+                LogicExplanation = $"조건 {ids} 중 하나 이상이 충족되어야 합니다.";
+            }
+            else
+            {
+                LogicExplanation = $"조건 {ids}가 모두 충족되어야 합니다.";
+            }
         }
     }
 

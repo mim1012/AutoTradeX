@@ -5,15 +5,17 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AutoTrader.UI.Views"
         xmlns:vm="clr-namespace:AutoTrader.UI.ViewModels"
+        xmlns:converters="clr-namespace:AutoTrader.UI.Converters"
         mc:Ignorable="d"
-        Title="AutoTradeX - 해외주식 자동매매 시스템" 
+        Title="AutoTradeX - 해외주식 자동매매 시스템"
         Height="900" Width="1400"
         WindowStartupLocation="CenterScreen"
         Background="#F5F5F5">
 
-    <Window.DataContext>
-        <vm:MainDashboardViewModel/>
-    </Window.DataContext>
+    <Window.Resources>
+        <converters:IsNegativeConverter x:Key="IsNegativeConverter"/>
+        <converters:IsPositiveConverter x:Key="IsPositiveConverter"/>
+    </Window.Resources>
 
     <Grid Margin="20">
         <Grid.RowDefinitions>

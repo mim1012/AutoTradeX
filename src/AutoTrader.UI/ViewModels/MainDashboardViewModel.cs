@@ -3,6 +3,7 @@ using AutoTrader.Core.Models.Database;
 using AutoTrader.Core.Repositories;
 using AutoTrader.UI.Commands;
 using AutoTrader.UI.Views;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
@@ -194,16 +195,14 @@ namespace AutoTrader.UI.ViewModels
                 return;
             }
 
-            var dialog = new ConditionEditorDialog
+            var dialog = new ConditionBuilderDialog
             {
                 Owner = Application.Current.MainWindow
             };
 
-            if (dialog.ShowDialog() == true)
-            {
-                // 조건식 변경 후 다시 로드
-                _ = LoadActiveAccountAsync();
-            }
+            dialog.ShowDialog();
+            // 조건식 변경 후 다시 로드
+            _ = LoadActiveAccountAsync();
         }
 
         /// <summary>

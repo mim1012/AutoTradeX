@@ -166,25 +166,41 @@
         <Border Grid.Row="2" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,1,0,1" Padding="16">
             <StackPanel>
                 <TextBlock Text="🔗 조건식 조합" FontWeight="Bold" Margin="0,0,0,12"/>
-                
+
+                <!-- 논리 연산자 선택 -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                    <TextBlock Text="논리 연산자: " VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <RadioButton x:Name="AndRadioButton"
+                                 Content="AND (모두 충족)"
+                                 GroupName="LogicOperator"
+                                 Margin="0,0,16,0"
+                                 VerticalAlignment="Center"
+                                 Checked="AndRadioButton_Checked"/>
+                    <RadioButton x:Name="OrRadioButton"
+                                 Content="OR (하나 이상 충족)"
+                                 GroupName="LogicOperator"
+                                 VerticalAlignment="Center"
+                                 Checked="OrRadioButton_Checked"/>
+                </StackPanel>
+
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    
+
                     <TextBlock Grid.Column="0" Text="조건식: " VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock Grid.Column="1" 
-                               Text="{Binding LogicExpression}" 
-                               FontWeight="Bold" 
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding LogicExpression}"
+                               FontWeight="Bold"
                                FontSize="16"
                                VerticalAlignment="Center"/>
                 </Grid>
-                
+
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                     <TextBlock Text="💡 설명: " VerticalAlignment="Top"/>
-                    <TextBlock Text="{Binding LogicExplanation}" 
-                               TextWrapping="Wrap" 
+                    <TextBlock Text="{Binding LogicExplanation}"
+                               TextWrapping="Wrap"
                                Foreground="#666"/>
                 </StackPanel>
             </StackPanel>

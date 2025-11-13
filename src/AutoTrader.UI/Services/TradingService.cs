@@ -1,6 +1,9 @@
 using AutoTrader.UI.Models;
 using AutoTrader.Core.Services.Stock;
+using AutoTrader.Core.Services.Api;
+using AutoTrader.Core.Services.Schedule;
 using System.Linq;
+using Schedule = AutoTrader.Core.Services.Schedule;
 
 namespace AutoTrader.UI.Services;
 
@@ -14,15 +17,22 @@ public class TradingService : ITradingService
     private readonly List<StockInfo> _candidateStocks = new();
     private readonly List<StockInfo> _orderPendingStocks = new();
     private readonly ITop300StockService? _top300Service;
+    private readonly BalanceApiService? _balanceService;
+    private readonly IMarketScheduleService? _marketSchedule;
 
     public bool IsConnected => _isConnected;
 
     public event EventHandler<string>? LogReceived;
     public event EventHandler? StocksUpdated;
 
-    public TradingService(ITop300StockService? top300Service = null)
+    public TradingService(
+        ITop300StockService? top300Service = null,
+        BalanceApiService? balanceService = null,
+        IMarketScheduleService? marketSchedule = null)
     {
         _top300Service = top300Service;
+        _balanceService = balanceService;
+        _marketSchedule = marketSchedule;
     }
 
     public async Task StartAsync()
@@ -148,38 +158,94 @@ public class TradingService : ITradingService
 
     public async Task<(decimal balance, decimal totalAssets)> GetAccountInfoAsync()
     {
-        // TODO: 실제 계좌 조회 API 호출
+        try
+        {
+            if (_balanceService != null)
+            {
+                // 실제 KIS API 호출
+                var accountInfo = await _balanceService.GetAccountBalanceAsync(null!); // AccountNumber는 설정에서 가져옴
+
+                if (accountInfo != null)
+                {
+                    LogReceived?.Invoke(this, $"[INFO] 계좌 조회 성공: 잔고=${accountInfo.AvailableCash:N2}, 총자산=${accountInfo.TotalAssets:N2}");
+                    return (accountInfo.AvailableCash, accountInfo.TotalAssets);
+                }
+                else
+                {
+                    LogReceived?.Invoke(this, "[WARNING] 계좌 조회 실패 - 더미 데이터 사용");
+                }
+            }
+            else
+            {
+                LogReceived?.Invoke(this, "[WARNING] BalanceApiService 미연결 - 더미 데이터 사용");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogReceived?.Invoke(this, $"[ERROR] 계좌 조회 실패: {ex.Message}");
+        }
+
+        // Fallback: 더미 데이터
         await Task.Delay(500);
         return (50000m, 100000m);
     }
 
     public (string status, string closeTime, bool isDst) GetMarketStatus()
     {
-        // TODO: 실제 시장 상태 조회
+        if (_marketSchedule != null)
+        {
+            try
+            {
+                var status = _marketSchedule.GetCurrentMarketStatus();
+                var closeTime = _marketSchedule.GetMarketCloseTimeString();
+                var isDst = _marketSchedule.IsDaylightSavingTime();
+
+                var statusText = status switch
+                {
+                    Schedule.MarketStatus.Open => "개장",
+                    Schedule.MarketStatus.PreMarket => "프리마켓",
+                    Schedule.MarketStatus.AfterHours => "애프터아워",
+                    _ => "폐장"
+                };
+
+                return (statusText, closeTime, isDst);
+            }
+            catch (Exception ex)
+            {
+                LogReceived?.Invoke(this, $"[ERROR] 시장 상태 조회 실패: {ex.Message}");
+            }
+        }
+
+        // Fallback: 간단한 로컬 시간 기반 계산
         var now = DateTime.Now;
         var hour = now.Hour;
 
-        // 미국 동부시간 기준 (간단한 시뮬레이션)
         if (hour >= 9 && hour < 16)
-        {
             return ("개장", "16:00 EST", false);
-        }
         else
-        {
             return ("폐장", "16:00 EST", false);
-        }
     }
 
     public TimeSpan GetTimeUntilClose()
     {
-        // TODO: 실제 마감 시간 계산
+        if (_marketSchedule != null)
+        {
+            try
+            {
+                return _marketSchedule.GetTimeUntilMarketClose();
+            }
+            catch (Exception ex)
+            {
+                LogReceived?.Invoke(this, $"[ERROR] 마감 시간 계산 실패: {ex.Message}");
+            }
+        }
+
+        // Fallback
         var now = DateTime.Now;
         var closeTime = new DateTime(now.Year, now.Month, now.Day, 16, 0, 0);
-        
+
         if (now > closeTime)
-        {
             closeTime = closeTime.AddDays(1);
-        }
 
         return closeTime - now;
     }

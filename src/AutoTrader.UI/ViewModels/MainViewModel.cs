@@ -22,11 +22,18 @@ public class MainViewModel : ViewModelBase
 
     private readonly ITradingService _tradingService;
     private readonly DispatcherTimer _updateTimer;
+    private readonly DispatcherTimer _workerMonitorTimer;
     private readonly AccountRepository? _accountRepository;
     private readonly ConditionSetRepository? _conditionSetRepository;
+    private readonly WorkerStatusRepository? _workerStatusRepository;
     private Account? _activeAccount;
     private ConditionSet? _activeConditionSet;
     private bool _isSystemRunning;
+    private string _workerStatus = "중지됨";
+    private string _workerLastHeartbeat = "--:--";
+    private int _workerTop300Count;
+    private int _workerCandidateCount;
+    private int _workerOrderCount;
     private string _apiConnectionStatus = "연결 대기 중...";
     private string _accountBalance = "$0.00";
     private string _totalAssets = "$0.00";
@@ -130,6 +137,51 @@ public class MainViewModel : ViewModelBase
     {
         get => _logText;
         set => SetProperty(ref _logText, value);
+    }
+
+    /// <summary>
+    /// Worker 서비스 상태
+    /// </summary>
+    public string WorkerStatus
+    {
+        get => _workerStatus;
+        set => SetProperty(ref _workerStatus, value);
+    }
+
+    /// <summary>
+    /// Worker 마지막 하트비트 시간
+    /// </summary>
+    public string WorkerLastHeartbeat
+    {
+        get => _workerLastHeartbeat;
+        set => SetProperty(ref _workerLastHeartbeat, value);
+    }
+
+    /// <summary>
+    /// Worker Top300 종목 수
+    /// </summary>
+    public int WorkerTop300Count
+    {
+        get => _workerTop300Count;
+        set => SetProperty(ref _workerTop300Count, value);
+    }
+
+    /// <summary>
+    /// Worker 후보 종목 수
+    /// </summary>
+    public int WorkerCandidateCount
+    {
+        get => _workerCandidateCount;
+        set => SetProperty(ref _workerCandidateCount, value);
+    }
+
+    /// <summary>
+    /// Worker 주문 종목 수
+    /// </summary>
+    public int WorkerOrderCount
+    {
+        get => _workerOrderCount;
+        set => SetProperty(ref _workerOrderCount, value);
     }
 
     /// <summary>
@@ -247,14 +299,16 @@ public class MainViewModel : ViewModelBase
     public MainViewModel(
         ITradingService tradingService,
         AccountRepository? accountRepository = null,
-        ConditionSetRepository? conditionSetRepository = null)
+        ConditionSetRepository? conditionSetRepository = null,
+        WorkerStatusRepository? workerStatusRepository = null)
     {
         _tradingService = tradingService;
         _accountRepository = accountRepository;
         _conditionSetRepository = conditionSetRepository;
+        _workerStatusRepository = workerStatusRepository;
 
         // ViewModel 초기화
-        ConditionBuilder = new ConditionBuilderViewModel();
+        ConditionBuilder = new ConditionBuilderViewModel(_accountRepository, _conditionSetRepository);
 
         // 이벤트 구독
         _tradingService.LogReceived += OnLogReceived;
@@ -278,6 +332,14 @@ public class MainViewModel : ViewModelBase
         };
         _updateTimer.Tick += OnTimerTick;
         _updateTimer.Start();
+
+        // Worker 모니터링 타이머 설정 (5초마다 Worker 상태 확인)
+        _workerMonitorTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(5)
+        };
+        _workerMonitorTimer.Tick += OnWorkerMonitorTick;
+        _workerMonitorTimer.Start();
 
         // 초기 데이터 로드
         _ = InitializeAsync();
@@ -386,6 +448,55 @@ public class MainViewModel : ViewModelBase
     {
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         LogText += $"[{timestamp}] {message}\n";
+    }
+
+    /// <summary>
+    /// Worker 상태 모니터링 (5초마다)
+    /// </summary>
+    private async void OnWorkerMonitorTick(object? sender, EventArgs e)
+    {
+        if (_workerStatusRepository == null)
+            return;
+
+        try
+        {
+            var status = await _workerStatusRepository.GetLatestAsync();
+
+            if (status == null)
+            {
+                WorkerStatus = "중지됨";
+                WorkerLastHeartbeat = "--:--";
+                WorkerTop300Count = 0;
+                WorkerCandidateCount = 0;
+                WorkerOrderCount = 0;
+                return;
+            }
+
+            // 상태 업데이트
+            var isAlive = await _workerStatusRepository.IsWorkerAliveAsync();
+            WorkerStatus = isAlive ? "실행 중" : "응답 없음";
+
+            // 로컬 시간으로 변환
+            var localHeartbeat = status.LastHeartbeat.ToLocalTime();
+            WorkerLastHeartbeat = localHeartbeat.ToString("HH:mm:ss");
+
+            // 통계 업데이트
+            WorkerTop300Count = status.Top300Count;
+            WorkerCandidateCount = status.CandidateCount;
+            WorkerOrderCount = status.OrderCount;
+
+            // 로그에 Worker 상태 표시 (응답 없을 때만)
+            if (!isAlive && status.IsRunning)
+            {
+                var secondsSince = await _workerStatusRepository.GetSecondsSinceLastHeartbeatAsync();
+                AddLog($"[WARNING] Worker 응답 없음 (마지막 하트비트: {secondsSince}초 전)");
+            }
+        }
+        catch (Exception ex)
+        {
+            WorkerStatus = "오류";
+            AddLog($"[ERROR] Worker 상태 확인 실패: {ex.Message}");
+        }
     }
 
     private void OnLogReceived(object? sender, string message)

@@ -1,5 +1,7 @@
 using AutoTrader.Core.Configuration;
+using AutoTrader.Core.Data;
 using AutoTrader.Core.Jobs;
+using AutoTrader.Core.Repositories;
 using AutoTrader.Core.Services.Api;
 using AutoTrader.Core.Services.Auth;
 using AutoTrader.Core.Services.Realtime;
@@ -8,6 +10,7 @@ using AutoTrader.Core.Services.Throttling;
 using AutoTrader.Core.Services.Trading;
 using AutoTrader.Core.Services.WebSocket;
 using AutoTrader.Worker;
+using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Serilog;
 
@@ -38,6 +41,15 @@ try
     builder.Services.Configure<WebSocketSettings>(builder.Configuration.GetSection("WebSocket"));
     builder.Services.Configure<ApiThrottlingSettings>(builder.Configuration.GetSection("ApiThrottling"));
 
+    // Database 설정 (SQLite)
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlite("Data Source=autotrader.db"));
+
+    // Repositories
+    builder.Services.AddScoped<AccountRepository>();
+    builder.Services.AddScoped<ConditionSetRepository>();
+    builder.Services.AddScoped<WorkerStatusRepository>();
+
     // HttpClient 등록
     builder.Services.AddHttpClient<IKisApiClient, KisApiClient>();
 
@@ -50,8 +62,11 @@ try
     // API 클라이언트
     builder.Services.AddSingleton<IKisApiClient, KisApiClient>();
 
-    // Stock 서비스
+    // API 서비스
     builder.Services.AddSingleton<TradeRankingApiService>();
+    builder.Services.AddSingleton<BalanceApiService>();
+
+    // Stock 서비스
     builder.Services.AddSingleton<ITop300StockService, Top300StockService>();
 
     // WebSocket 서비스
@@ -86,6 +101,14 @@ try
     builder.Services.AddHostedService<TradingWorker>();
 
     var host = builder.Build();
+
+    // 데이터베이스 초기화
+    using (var scope = host.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await DbInitializer.InitializeAsync(dbContext);
+        Log.Information("Database initialized successfully");
+    }
 
     Log.Information("AutoTradeX Worker Service configured successfully");
 

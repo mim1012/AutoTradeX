@@ -1,0 +1,18 @@
+<Window x:Class="AutoTrader.UI.Views.ConditionBuilderDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:AutoTrader.UI.Views"
+        mc:Ignorable="d"
+        Title="조건식 설정"
+        Height="700" Width="900"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5"
+        ResizeMode="CanResize">
+
+    <Grid>
+        <!-- ConditionBuilderControl을 표시 -->
+        <local:ConditionBuilderControl/>
+    </Grid>
+</Window>

@@ -1,6 +1,7 @@
 using AutoTrader.Core.Models.Trading;
 using AutoTrader.UI.Models;
 using AutoTrader.UI.ViewModels;
+using System.Text.RegularExpressions;
 
 namespace AutoTrader.UI.Services;
 
@@ -51,16 +52,40 @@ public class ConditionMappingService
         // 등락률 조건: "등락률: [일봉] 0봉 전 종가 대비 -7.0% ~ 0.0%"
         // Core에서는 ChangeRate 타입으로 매핑
         // 범위 조건이므로 두 개의 조건으로 분리 필요 (현재는 단순화)
-        
+
+        var value = ParseChangeRateValue(uiCondition.Description);
+
         return new TradingCondition
         {
             Name = "등락률 조건",
             Type = Core.Models.Trading.ConditionType.ChangeRate,
             Operator = ConditionOperator.LessThan,
-            Value = 0, // TODO: UI에서 실제 값 파싱 필요
+            Value = value,
             Description = uiCondition.Description,
             IsEnabled = uiCondition.IsEnabled
         };
+    }
+
+    /// <summary>
+    /// 등락률 파싱: "등락률: ... -7.0% ~ 0.0%" → -7.0
+    /// </summary>
+    private decimal ParseChangeRateValue(string description)
+    {
+        // 범위의 하한값 파싱 (예: -7.0%)
+        var match = Regex.Match(description, @"(-?\d+(\.\d+)?)\s*%\s*~");
+        if (match.Success)
+        {
+            return decimal.Parse(match.Groups[1].Value);
+        }
+
+        // 단일 값 파싱 (예: -7.0%)
+        match = Regex.Match(description, @"(-?\d+(\.\d+)?)\s*%");
+        if (match.Success)
+        {
+            return decimal.Parse(match.Groups[1].Value);
+        }
+
+        return 0m;
     }
 
     private TradingCondition MapMovingAverageCondition(ConditionItemViewModel uiCondition)
@@ -82,16 +107,41 @@ public class ConditionMappingService
     private TradingCondition MapTradeVolumeCondition(ConditionItemViewModel uiCondition)
     {
         // 거래대금 조건: "거래대금: 1000만 달러 이상"
-        
+
+        var value = ParseTradeAmountValue(uiCondition.Description);
+
         return new TradingCondition
         {
             Name = "거래대금 조건",
             Type = Core.Models.Trading.ConditionType.TradeAmount,
             Operator = ConditionOperator.GreaterThanOrEquals,
-            Value = 10_000_000, // TODO: UI에서 실제 값 파싱 필요
+            Value = value,
             Description = uiCondition.Description,
             IsEnabled = uiCondition.IsEnabled
         };
+    }
+
+    /// <summary>
+    /// 거래대금 파싱: "1000만 달러" → 10,000,000 / "1억 달러" → 100,000,000
+    /// </summary>
+    private decimal ParseTradeAmountValue(string description)
+    {
+        // 숫자 추출 (예: "1000")
+        var numberMatch = Regex.Match(description, @"(\d+(\.\d+)?)");
+        if (!numberMatch.Success)
+            return 10_000_000m; // 기본값
+
+        var number = decimal.Parse(numberMatch.Groups[1].Value);
+
+        // 단위 확인
+        if (description.Contains("조"))
+            return number * 1_000_000_000_000m;
+        else if (description.Contains("억"))
+            return number * 100_000_000m;
+        else if (description.Contains("만"))
+            return number * 10_000m;
+        else
+            return number; // 단위 없으면 그대로
     }
 
     private TradingCondition MapPriceComparisonCondition(ConditionItemViewModel uiCondition)

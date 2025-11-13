@@ -1,8 +1,14 @@
 using AutoTrader.Core.Data;
 using AutoTrader.Core.Models.Database;
 using AutoTrader.Core.Repositories;
+using AutoTrader.Core.Services.Auth;
+using AutoTrader.Core.Services.Api;
+using AutoTrader.Core.Configuration;
 using AutoTrader.UI.Commands;
 using AutoTrader.UI.Views;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -169,13 +175,85 @@ namespace AutoTrader.UI.ViewModels
         /// <summary>
         /// API 연결 테스트
         /// </summary>
-        private void TestApiConnection()
+        private async void TestApiConnection()
         {
-            // TODO: 실제 KIS API 연결 테스트 구현
-            ApiTestStatus = "✅ API 연결 성공";
-            ApiTestStatusColor = new SolidColorBrush(Colors.Green);
+            // 입력 값 검증
+            if (string.IsNullOrWhiteSpace(AppKey) || string.IsNullOrWhiteSpace(AppSecret))
+            {
+                ApiTestStatus = "❌ AppKey와 AppSecret을 입력해주세요";
+                ApiTestStatusColor = new SolidColorBrush(Colors.Red);
+                return;
+            }
 
-            MessageBox.Show("API 연결 테스트 기능은 추후 구현 예정입니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+            ApiTestStatus = "🔄 연결 테스트 중...";
+            ApiTestStatusColor = new SolidColorBrush(Colors.Orange);
+
+            try
+            {
+                // KisSettings 임시 생성 (실전 투자)
+                var kisSettings = new KisSettings
+                {
+                    AppKey = AppKey,
+                    AppSecret = AppSecret,
+                    IsPaperTrading = false, // 실전 투자
+                    BaseUrl = "https://openapi.koreainvestment.com:9443" // 실전 투자 URL
+                };
+
+                // HttpClient 생성
+                var httpClient = new System.Net.Http.HttpClient();
+
+                // NullLogger 생성 (테스트용)
+                var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => { });
+                var logger = loggerFactory.CreateLogger<KisAuthService>();
+
+                // KisAuthService 생성 및 토큰 획득 시도
+                var authService = new KisAuthService(
+                    httpClient,
+                    Options.Create(kisSettings),
+                    logger
+                );
+
+                // 액세스 토큰 획득 시도
+                var accessToken = await authService.GetAccessTokenAsync();
+
+                if (!string.IsNullOrEmpty(accessToken))
+                {
+                    ApiTestStatus = "✅ API 연결 성공 (실전투자)";
+                    ApiTestStatusColor = new SolidColorBrush(Colors.Green);
+                    MessageBox.Show(
+                        "한국투자증권 API 연결에 성공했습니다!\n\n" +
+                        "액세스 토큰이 정상적으로 발급되었습니다.\n\n" +
+                        "⚠️ 주의: 실전 투자 계좌로 연결됩니다.",
+                        "API 연결 성공",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information
+                    );
+                }
+                else
+                {
+                    ApiTestStatus = "❌ API 연결 실패 (토큰 발급 실패)";
+                    ApiTestStatusColor = new SolidColorBrush(Colors.Red);
+                    MessageBox.Show(
+                        "API 연결에 실패했습니다.\n\n" +
+                        "AppKey와 AppSecret을 확인해주세요.",
+                        "API 연결 실패",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                ApiTestStatus = $"❌ API 연결 실패: {ex.Message}";
+                ApiTestStatusColor = new SolidColorBrush(Colors.Red);
+                MessageBox.Show(
+                    $"API 연결 테스트 중 오류가 발생했습니다:\n\n{ex.Message}\n\n" +
+                    "AppKey와 AppSecret이 올바른지 확인해주세요.",
+                    "API 연결 오류",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error
+                );
+            }
         }
 
         /// <summary>
@@ -245,8 +323,13 @@ namespace AutoTrader.UI.ViewModels
                     MessageBox.Show("계좌가 추가되었습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
 
-                // 모달 닫기
-                Application.Current.Windows.OfType<AccountDetailDialog>().FirstOrDefault()?.Close();
+                // 모달 닫기 (DialogResult = true로 설정하여 부모에게 성공 알림)
+                var dialog = Application.Current.Windows.OfType<AccountDetailDialog>().FirstOrDefault();
+                if (dialog != null)
+                {
+                    dialog.DialogResult = true;
+                    dialog.Close();
+                }
             }
             catch (Exception ex)
             {

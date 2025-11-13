@@ -2,6 +2,7 @@
 using System.Data;
 using System.IO;
 using System.Windows;
+using AutoTrader.Core.Configuration;
 using AutoTrader.Core.Data;
 using AutoTrader.Core.Repositories;
 using AutoTrader.Core.Services.Stock;
@@ -36,6 +37,10 @@ public partial class App : Application
                 // Configuration 등록
                 var configuration = context.Configuration;
 
+                // Configuration 섹션 바인딩
+                services.Configure<KisSettings>(configuration.GetSection("KIS"));
+                services.Configure<AutoTrader.Core.Configuration.ApiThrottlingSettings>(configuration.GetSection("ApiThrottling"));
+
                 // HttpClient 등록
                 services.AddHttpClient();
 
@@ -46,6 +51,7 @@ public partial class App : Application
                 // Repository 등록
                 services.AddScoped<AccountRepository>();
                 services.AddScoped<ConditionSetRepository>();
+                services.AddScoped<WorkerStatusRepository>();
 
                 // Core 서비스 등록
                 services.AddSingleton<AutoTrader.Core.Services.Auth.IKisAuthService, AutoTrader.Core.Services.Auth.KisAuthService>();
@@ -53,13 +59,17 @@ public partial class App : Application
                 services.AddSingleton<AutoTrader.Core.Services.Throttling.IApiThrottler, AutoTrader.Core.Services.Throttling.ApiThrottler>();
                 services.AddSingleton<AutoTrader.Core.Services.Stock.TradeRankingApiService>();
                 services.AddSingleton<ITop300StockService, AutoTrader.Core.Services.Stock.Top300StockService>();
+                services.AddSingleton<AutoTrader.Core.Services.Api.BalanceApiService>();
+                services.AddSingleton<AutoTrader.Core.Services.Schedule.IMarketScheduleService, AutoTrader.Core.Services.Schedule.MarketScheduleService>();
 
                 // UI 서비스 등록
                 services.AddTransient<ITradingService>(sp =>
                 {
-                    // ITop300StockService 주입
+                    // 모든 필요한 서비스 주입
                     var top300Service = sp.GetService<ITop300StockService>();
-                    return new TradingService(top300Service);
+                    var balanceService = sp.GetService<AutoTrader.Core.Services.Api.BalanceApiService>();
+                    var marketSchedule = sp.GetService<AutoTrader.Core.Services.Schedule.IMarketScheduleService>();
+                    return new TradingService(top300Service, balanceService, marketSchedule);
                 });
 
                 // ViewModels 등록
@@ -69,7 +79,8 @@ public partial class App : Application
                     var tradingService = sp.GetRequiredService<ITradingService>();
                     var accountRepo = sp.GetRequiredService<AccountRepository>();
                     var conditionRepo = sp.GetRequiredService<ConditionSetRepository>();
-                    return new MainViewModel(tradingService, accountRepo, conditionRepo);
+                    var workerStatusRepo = sp.GetRequiredService<WorkerStatusRepository>();
+                    return new MainViewModel(tradingService, accountRepo, conditionRepo, workerStatusRepo);
                 });
 
                 // Views 등록

@@ -26,6 +26,11 @@ namespace AutoTrader.Core.Data
         public DbSet<Condition> Conditions { get; set; } = null!;
 
         /// <summary>
+        /// Worker 상태 테이블
+        /// </summary>
+        public DbSet<WorkerStatus> WorkerStatus { get; set; } = null!;
+
+        /// <summary>
         /// 생성자 (Dependency Injection용)
         /// </summary>
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)

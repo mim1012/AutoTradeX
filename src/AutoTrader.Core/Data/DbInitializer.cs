@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using AutoTrader.Core.Models.Database;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace AutoTrader.Core.Data
@@ -28,10 +30,37 @@ namespace AutoTrader.Core.Data
 
                 // 또는 SQL 스크립트 직접 실행
                 // await ExecuteSqlScriptAsync(context, "init_database.sql");
+
+                // WorkerStatus 초기 레코드 생성 (존재하지 않을 경우)
+                await EnsureWorkerStatusAsync(context);
             }
             catch (Exception ex)
             {
                 throw new InvalidOperationException("데이터베이스 초기화 실패", ex);
+            }
+        }
+
+        /// <summary>
+        /// WorkerStatus 초기 레코드 생성 (Id=1, IsRunning=false)
+        /// </summary>
+        private static async Task EnsureWorkerStatusAsync(AppDbContext context)
+        {
+            // WorkerStatus 레코드가 없으면 초기 레코드 생성
+            if (!await context.WorkerStatus.AnyAsync())
+            {
+                var workerStatus = new WorkerStatus
+                {
+                    IsRunning = false,
+                    LastHeartbeat = DateTime.UtcNow,
+                    Top300Count = 0,
+                    CandidateCount = 0,
+                    OrderCount = 0,
+                    LastLog = "System initialized",
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                context.WorkerStatus.Add(workerStatus);
+                await context.SaveChangesAsync();
             }
         }
 
