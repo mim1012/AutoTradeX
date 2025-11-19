@@ -3,13 +3,18 @@ using AutoTrader.Core.Models.Database;
 using AutoTrader.Core.Repositories;
 using AutoTrader.Core.Services.Auth;
 using AutoTrader.Core.Services.Api;
+using AutoTrader.Core.Services.Security;
 using AutoTrader.Core.Configuration;
 using AutoTrader.UI.Commands;
 using AutoTrader.UI.Views;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -31,7 +36,6 @@ namespace AutoTrader.UI.ViewModels
         private string _accountName = string.Empty;
         private string _appKey = string.Empty;
         private string _appSecret = string.Empty;
-        private double _buyRatio = 100.0;
         private bool _excludeOwnedStocks = false;
         private string _apiTestStatus = string.Empty;
         private Brush _apiTestStatusColor = new SolidColorBrush(Colors.Black);
@@ -44,13 +48,42 @@ namespace AutoTrader.UI.ViewModels
         {
             _accountId = accountId;
 
-            // DbContext 초기화
-            var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlite("Data Source=autotrader.db");
+            // Configuration 로드 (실행 파일 위치 기준)
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
+
+            // DbContext 초기화 (appsettings.json에서 데이터베이스 타입 읽기)
+            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+            var databaseType = configuration.GetValue<string>("ConnectionStrings:DatabaseType") ?? "SQLite";
+
+            switch (databaseType.ToUpper())
+            {
+                case "SQLITE":
+                    optionsBuilder.UseSqlite("Data Source=autotrader.db");
+                    break;
+                case "MYSQL":
+                    var mysqlConnectionString = configuration.GetConnectionString("DefaultConnection");
+                    var serverVersion = ServerVersion.AutoDetect(mysqlConnectionString);
+                    optionsBuilder.UseMySql(mysqlConnectionString, serverVersion);
+                    break;
+                case "POSTGRESQL":
+                case "POSTGRES":
+                    var postgresConnectionString = configuration.GetConnectionString("DefaultConnection");
+                    optionsBuilder.UseNpgsql(postgresConnectionString);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unsupported database type: {databaseType}");
+            }
+
             _dbContext = new AppDbContext(optionsBuilder.Options);
 
+            // EncryptionService 초기화
+            var encryptionService = new EncryptionService(NullLogger<EncryptionService>.Instance);
+
             // Repository 초기화
-            _accountRepository = new AccountRepository(_dbContext);
+            _accountRepository = new AccountRepository(_dbContext, encryptionService);
 
             // Command 초기화
             ToggleAppKeyVisibilityCommand = new RelayCommand(ToggleAppKeyVisibility);
@@ -90,12 +123,6 @@ namespace AutoTrader.UI.ViewModels
         {
             get => _appSecret;
             set => SetProperty(ref _appSecret, value);
-        }
-
-        public double BuyRatio
-        {
-            get => _buyRatio;
-            set => SetProperty(ref _buyRatio, value);
         }
 
         public bool ExcludeOwnedStocks
@@ -144,7 +171,6 @@ namespace AutoTrader.UI.ViewModels
                     AccountName = account.AccountName ?? string.Empty;
                     AppKey = account.AppKey;
                     AppSecret = account.AppSecret;
-                    BuyRatio = account.BuyRatio;
                     ExcludeOwnedStocks = account.ExcludeOwnedStocks;
                 }
             }
@@ -280,12 +306,6 @@ namespace AutoTrader.UI.ViewModels
                 return;
             }
 
-            if (BuyRatio < 0 || BuyRatio > 100)
-            {
-                MessageBox.Show("매수 비율은 0 ~ 100 사이의 값이어야 합니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             try
             {
                 if (_accountId.HasValue)
@@ -298,7 +318,6 @@ namespace AutoTrader.UI.ViewModels
                         account.AccountName = AccountName;
                         account.AppKey = AppKey;
                         account.AppSecret = AppSecret;
-                        account.BuyRatio = BuyRatio;
                         account.ExcludeOwnedStocks = ExcludeOwnedStocks;
 
                         await _accountRepository.UpdateAccountAsync(account);
@@ -315,7 +334,6 @@ namespace AutoTrader.UI.ViewModels
                         AppKey = AppKey,
                         AppSecret = AppSecret,
                         IsActive = false,
-                        BuyRatio = BuyRatio,
                         ExcludeOwnedStocks = ExcludeOwnedStocks
                     };
 

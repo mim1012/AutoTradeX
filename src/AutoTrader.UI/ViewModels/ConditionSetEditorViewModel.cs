@@ -1,11 +1,15 @@
 using AutoTrader.Core.Data;
 using AutoTrader.Core.Models.Database;
 using AutoTrader.Core.Repositories;
+using AutoTrader.Core.Services.Market;
 using AutoTrader.UI.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -18,25 +22,65 @@ namespace AutoTrader.UI.ViewModels
     {
         private readonly AppDbContext _dbContext;
         private readonly ConditionSetRepository _conditionSetRepository;
+        private readonly KisMarketDataService _marketDataService;
         private int? _accountId;
         private int? _conditionSetId;
 
+        // DI 생성자 사용 권장 (현재는 직접 생성)
         public ConditionSetEditorViewModel()
         {
-            // DbContext 초기화
-            var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlite("Data Source=autotrader.db");
+            // Configuration 로드 (실행 파일 위치 기준)
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
+
+            // DbContext 초기화 (appsettings.json에서 데이터베이스 타입 읽기)
+            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+            var databaseType = configuration.GetValue<string>("ConnectionStrings:DatabaseType") ?? "SQLite";
+
+            switch (databaseType.ToUpper())
+            {
+                case "SQLITE":
+                    optionsBuilder.UseSqlite("Data Source=autotrader.db");
+                    break;
+                case "MYSQL":
+                    var mysqlConnectionString = configuration.GetConnectionString("DefaultConnection");
+                    var serverVersion = ServerVersion.AutoDetect(mysqlConnectionString);
+                    optionsBuilder.UseMySql(mysqlConnectionString, serverVersion);
+                    break;
+                case "POSTGRESQL":
+                case "POSTGRES":
+                    var postgresConnectionString = configuration.GetConnectionString("DefaultConnection");
+                    optionsBuilder.UseNpgsql(postgresConnectionString);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unsupported database type: {databaseType}");
+            }
+
             _dbContext = new AppDbContext(optionsBuilder.Options);
 
             // Repository 초기화
             _conditionSetRepository = new ConditionSetRepository(_dbContext);
 
-            // 컬렉션 초기화
+            // Service 초기화 (TODO: DI로 변경 필요)
+            // _marketDataService = new KisMarketDataService(...); 
+            // 현재는 null 상태로 두고, 실제 런타임에서는 DI를 통해 주입받거나 해야 함.
+            // 데모 목적상 null 체크 후 동작하도록 수정.
+        }
+
+        // DI 생성자 추가
+        public ConditionSetEditorViewModel(
+            KisMarketDataService marketDataService,
+            ConditionSetRepository conditionSetRepository)
+        {
+            _marketDataService = marketDataService;
+            _conditionSetRepository = conditionSetRepository;
+
             Conditions = new ObservableCollection<ConditionItemViewModel>();
             FormulaTokens = new ObservableCollection<FormulaToken>();
             MatchedStocks = new ObservableCollection<StockPreviewItem>();
 
-            // 초기 미리보기 데이터 로드
             LoadPreviewData();
         }
 
@@ -45,17 +89,17 @@ namespace AutoTrader.UI.ViewModels
         /// <summary>
         /// 조건 목록
         /// </summary>
-        public ObservableCollection<ConditionItemViewModel> Conditions { get; }
+        public ObservableCollection<ConditionItemViewModel> Conditions { get; } = new ObservableCollection<ConditionItemViewModel>();
 
         /// <summary>
         /// 조건식 토큰 목록
         /// </summary>
-        public ObservableCollection<FormulaToken> FormulaTokens { get; }
+        public ObservableCollection<FormulaToken> FormulaTokens { get; } = new ObservableCollection<FormulaToken>();
 
         /// <summary>
         /// 조건 충족 종목 미리보기 목록
         /// </summary>
-        public ObservableCollection<StockPreviewItem> MatchedStocks { get; }
+        public ObservableCollection<StockPreviewItem> MatchedStocks { get; } = new ObservableCollection<StockPreviewItem>();
 
         #endregion
 
@@ -280,40 +324,61 @@ namespace AutoTrader.UI.ViewModels
         /// <summary>
         /// 조건 충족 종목 미리보기 데이터 로드
         /// </summary>
-        public void LoadPreviewData()
+        public async void LoadPreviewData()
         {
-            // TODO: 실제 API 호출하여 거래대금 상위 300 종목 가져오기
-            // TODO: 조건식 평가하여 충족 종목 필터링
+            if (_marketDataService == null) return;
 
-            // 임시 데이터
-            MatchedStocks.Clear();
-            MatchedStocks.Add(new StockPreviewItem
+            try
             {
-                Rank = 3,
-                Symbol = "NVDA",
-                Name = "NVIDIA Corp",
-                CurrentPrice = 485.00m,
-                ChangePercent = -5.8,
-                TradeVolume = 12500000000m
-            });
-            MatchedStocks.Add(new StockPreviewItem
+                // 실제 API 호출하여 거래대금 상위 300 종목 가져오기
+                var stocks = await _marketDataService.GetTop300StocksAsync();
+
+                MatchedStocks.Clear();
+
+                if (stocks != null && stocks.Any())
+                {
+                    // 조건식 평가하여 충족 종목 필터링 (임시로 전체 표시)
+                    foreach (var stock in stocks.Take(100)) // 상위 100개만 표시
+                    {
+                        MatchedStocks.Add(new StockPreviewItem
+                        {
+                            Rank = stock.Rank,
+                            Symbol = stock.Symbol,
+                            Name = stock.Name,
+                            CurrentPrice = stock.CurrentPrice,
+                            ChangePercent = (double)stock.ChangePercent,
+                            TradeVolume = stock.TradeVolume
+                        });
+                    }
+                }
+                else
+                {
+                    // API 연결 실패 시 임시 데이터 표시
+                    MatchedStocks.Add(new StockPreviewItem
+                    {
+                        Rank = 0,
+                        Symbol = "INFO",
+                        Name = "데이터가 없습니다.",
+                        CurrentPrice = 0m,
+                        ChangePercent = 0,
+                        TradeVolume = 0m
+                    });
+                }
+            }
+            catch (Exception ex)
             {
-                Rank = 7,
-                Symbol = "TSLA",
-                Name = "Tesla Inc",
-                CurrentPrice = 245.00m,
-                ChangePercent = -3.2,
-                TradeVolume = 15800000000m
-            });
-            MatchedStocks.Add(new StockPreviewItem
-            {
-                Rank = 12,
-                Symbol = "AAPL",
-                Name = "Apple Inc",
-                CurrentPrice = 175.00m,
-                ChangePercent = -2.1,
-                TradeVolume = 8300000000m
-            });
+                // 오류 발생 시 오류 메시지 표시
+                MatchedStocks.Clear();
+                MatchedStocks.Add(new StockPreviewItem
+                {
+                    Rank = 0,
+                    Symbol = "ERROR",
+                    Name = $"데이터 로드 실패: {ex.Message}",
+                    CurrentPrice = 0m,
+                    ChangePercent = 0,
+                    TradeVolume = 0m
+                });
+            }
         }
 
         #endregion

@@ -5,6 +5,7 @@ using System.Windows;
 using AutoTrader.Core.Configuration;
 using AutoTrader.Core.Data;
 using AutoTrader.Core.Repositories;
+using AutoTrader.Core.Services.Security;
 using AutoTrader.Core.Services.Stock;
 using AutoTrader.UI.Services;
 using AutoTrader.UI.ViewModels;
@@ -44,9 +45,32 @@ public partial class App : Application
                 // HttpClient 등록
                 services.AddHttpClient();
 
-                // DbContext 등록
+                // DbContext 등록 (SQLite, MySQL, PostgreSQL)
+                var databaseType = configuration.GetValue<string>("ConnectionStrings:DatabaseType") ?? "SQLite";
                 services.AddDbContext<AppDbContext>(options =>
-                    options.UseSqlite("Data Source=autotrader.db"));
+                {
+                    switch (databaseType.ToUpper())
+                    {
+                        case "SQLITE":
+                            options.UseSqlite("Data Source=autotrader.db");
+                            break;
+                        case "MYSQL":
+                            var mysqlConnectionString = configuration.GetConnectionString("DefaultConnection");
+                            var serverVersion = ServerVersion.AutoDetect(mysqlConnectionString);
+                            options.UseMySql(mysqlConnectionString, serverVersion);
+                            break;
+                        case "POSTGRESQL":
+                        case "POSTGRES":
+                            var postgresConnectionString = configuration.GetConnectionString("DefaultConnection");
+                            options.UseNpgsql(postgresConnectionString);
+                            break;
+                        default:
+                            throw new InvalidOperationException($"Unsupported database type: {databaseType}. Use 'SQLite', 'MySQL', or 'PostgreSQL'.");
+                    }
+                });
+
+                // Security Services
+                services.AddSingleton<IEncryptionService, EncryptionService>();
 
                 // Repository 등록
                 services.AddScoped<AccountRepository>();
@@ -103,8 +127,8 @@ public partial class App : Application
 
         // MainDashboard를 시작 화면으로 표시
         var mainDashboard = _host.Services.GetRequiredService<MainDashboard>();
-        var mainViewModel = _host.Services.GetRequiredService<MainViewModel>();
-        mainDashboard.DataContext = mainViewModel;
+        var mainDashboardViewModel = _host.Services.GetRequiredService<MainDashboardViewModel>();
+        mainDashboard.DataContext = mainDashboardViewModel;
         mainDashboard.Show();
 
         base.OnStartup(e);

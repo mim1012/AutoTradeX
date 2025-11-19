@@ -55,12 +55,6 @@ namespace AutoTrader.Core.Models.Database
         public bool IsActive { get; set; } = false;
 
         /// <summary>
-        /// 매수 비율 (0.0 ~ 100.0)
-        /// </summary>
-        [Column("BuyRatio")]
-        public double BuyRatio { get; set; } = 100.0;
-
-        /// <summary>
         /// 관심종목 제외 옵션 (true: 보유 종목 재진입 방지)
         /// </summary>
         [Column("ExcludeOwnedStocks")]

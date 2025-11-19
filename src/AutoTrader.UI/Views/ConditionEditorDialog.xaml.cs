@@ -351,8 +351,122 @@ public partial class ConditionEditorDialog : Window
             StatusMessage = "- (미평가)"
         };
 
+        // 조건 타입별 파라미터 저장
+        try
+        {
+            switch (conditionTypeTag)
+            {
+                case "PriceChange":
+                    SavePriceChangeParameters(ResultCondition);
+                    break;
+                case "MovingAverage":
+                    SaveMovingAverageParameters(ResultCondition);
+                    break;
+                case "TradeVolume":
+                    SaveTradeVolumeParameters(ResultCondition);
+                    break;
+                case "PriceComparison":
+                    SavePriceComparisonParameters(ResultCondition);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"파라미터 저장 중 오류가 발생했습니다: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
         DialogResult = true;
         Close();
+    }
+
+    private void SavePriceChangeParameters(ConditionItemViewModel condition)
+    {
+        if (_candleTypeComboBox?.SelectedItem is ComboBoxItem candleItem)
+        {
+            condition.Parameters["CandleType"] = candleItem.Tag?.ToString() ?? "Daily";
+        }
+
+        if (_minPercentTextBox != null && decimal.TryParse(_minPercentTextBox.Text, out var minPercent))
+        {
+            condition.Parameters["MinPercent"] = minPercent;
+        }
+
+        if (_maxPercentTextBox != null && decimal.TryParse(_maxPercentTextBox.Text, out var maxPercent))
+        {
+            condition.Parameters["MaxPercent"] = maxPercent;
+        }
+    }
+
+    private void SaveMovingAverageParameters(ConditionItemViewModel condition)
+    {
+        if (_maTypeComboBox?.SelectedItem is ComboBoxItem maItem && int.TryParse(maItem.Tag?.ToString(), out var maType))
+        {
+            condition.Parameters["MaType"] = maType; // 10, 20, or 120
+        }
+
+        if (_minPercentTextBox != null && decimal.TryParse(_minPercentTextBox.Text, out var minPercent))
+        {
+            condition.Parameters["MaRangeMin"] = minPercent;
+        }
+
+        if (_maxPercentTextBox != null && decimal.TryParse(_maxPercentTextBox.Text, out var maxPercent))
+        {
+            condition.Parameters["MaRangeMax"] = maxPercent;
+        }
+    }
+
+    private void SaveTradeVolumeParameters(ConditionItemViewModel condition)
+    {
+        if (_minTradeVolumeTextBox != null && decimal.TryParse(_minTradeVolumeTextBox.Text, out var minVolume))
+        {
+            condition.Parameters["MinTradeVolume"] = minVolume;
+        }
+    }
+
+    private void SavePriceComparisonParameters(ConditionItemViewModel condition)
+    {
+        // 캔들 타입 (일봉 고정, 추후 확장 가능)
+        condition.Parameters["CandleType"] = "Daily";
+
+        // 비교 요소 A 파싱 (예: "0_Open" -> offset=0, element=Open)
+        if (_priceElementAComboBox?.SelectedItem is ComboBoxItem elementAItem)
+        {
+            var tagA = elementAItem.Tag?.ToString() ?? "0_Close";
+            var partsA = tagA.Split('_');
+            if (partsA.Length == 2 && int.TryParse(partsA[0], out var offsetA))
+            {
+                condition.Parameters["CandleOffsetA"] = offsetA;
+                condition.Parameters["PriceElementA"] = partsA[1]; // "Open", "High", "Low", "Close"
+            }
+        }
+
+        // 비교 연산자
+        if (_comparisonOperatorComboBox?.SelectedItem is ComboBoxItem opItem)
+        {
+            var op = opItem.Tag?.ToString() ?? ">";
+            condition.Parameters["Operator"] = op switch
+            {
+                ">" => "GreaterThan",
+                "<" => "LessThan",
+                ">=" => "GreaterThanOrEquals",
+                "<=" => "LessThanOrEquals",
+                "=" => "Equals",
+                _ => "GreaterThan"
+            };
+        }
+
+        // 비교 요소 B 파싱
+        if (_priceElementBComboBox?.SelectedItem is ComboBoxItem elementBItem)
+        {
+            var tagB = elementBItem.Tag?.ToString() ?? "1_Low";
+            var partsB = tagB.Split('_');
+            if (partsB.Length == 2 && int.TryParse(partsB[0], out var offsetB))
+            {
+                condition.Parameters["CandleOffsetB"] = offsetB;
+                condition.Parameters["PriceElementB"] = partsB[1];
+            }
+        }
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)

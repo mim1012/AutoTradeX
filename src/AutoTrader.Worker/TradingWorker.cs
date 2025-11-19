@@ -1,8 +1,11 @@
 using AutoTrader.Core.Configuration;
+using AutoTrader.Core.DTOs.WebSocket;
+using AutoTrader.Core.Models.Realtime;
 using AutoTrader.Core.Models.Trading;
 using AutoTrader.Core.Models.WebSocket;
 using AutoTrader.Core.Repositories;
 using AutoTrader.Core.Services.Api;
+using AutoTrader.Core.Services.Market;
 using AutoTrader.Core.Services.Realtime;
 using AutoTrader.Core.Services.Stock;
 using AutoTrader.Core.Services.Trading;
@@ -21,8 +24,11 @@ namespace AutoTrader.Worker;
 public class TradingWorker : BackgroundService
 {
     private readonly ITop300StockService _stockService;
+    private readonly IHistoricalDataService _historicalDataService;
     private readonly IWebSocketManager _webSocketManager;
     private readonly IRealtimeDataAggregator _dataAggregator;
+    private readonly ISnapshotDataService _snapshotService;
+    private readonly IMultiPointValidator _multiPointValidator;
     private readonly IConditionEvaluator _conditionEvaluator;
     private readonly ICandidateTracker _candidateTracker;
     private readonly IOrderExecutor _orderExecutor;
@@ -44,13 +50,19 @@ public class TradingWorker : BackgroundService
     private bool _ordersExecutedToday = false;
     private DateTime _lastOrderExecutionDate = DateTime.MinValue;
 
+    // Top 300 종목 캐시 (스냅샷 방식용)
+    private List<string> _top300Symbols = new();
+
     // Heartbeat 타이머 (30초마다)
     private Timer? _heartbeatTimer;
 
     public TradingWorker(
         ITop300StockService stockService,
+        IHistoricalDataService historicalDataService,
         IWebSocketManager webSocketManager,
         IRealtimeDataAggregator dataAggregator,
+        ISnapshotDataService snapshotService,
+        IMultiPointValidator multiPointValidator,
         IConditionEvaluator conditionEvaluator,
         ICandidateTracker candidateTracker,
         IOrderExecutor orderExecutor,
@@ -60,8 +72,11 @@ public class TradingWorker : BackgroundService
         ILogger<TradingWorker> logger)
     {
         _stockService = stockService ?? throw new ArgumentNullException(nameof(stockService));
+        _historicalDataService = historicalDataService ?? throw new ArgumentNullException(nameof(historicalDataService));
         _webSocketManager = webSocketManager ?? throw new ArgumentNullException(nameof(webSocketManager));
         _dataAggregator = dataAggregator ?? throw new ArgumentNullException(nameof(dataAggregator));
+        _snapshotService = snapshotService ?? throw new ArgumentNullException(nameof(snapshotService));
+        _multiPointValidator = multiPointValidator ?? throw new ArgumentNullException(nameof(multiPointValidator));
         _conditionEvaluator = conditionEvaluator ?? throw new ArgumentNullException(nameof(conditionEvaluator));
         _candidateTracker = candidateTracker ?? throw new ArgumentNullException(nameof(candidateTracker));
         _orderExecutor = orderExecutor ?? throw new ArgumentNullException(nameof(orderExecutor));
@@ -70,8 +85,11 @@ public class TradingWorker : BackgroundService
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        // WebSocket 데이터 수신 이벤트 연결
-        _webSocketManager.RealtimeDataReceived += OnRealtimeDataReceived;
+        // WebSocket 데이터 수신 이벤트는 조건부 연결
+        if (_tradingSettings.UseRealtimeMonitoring)
+        {
+            _webSocketManager.RealtimeDataReceived += OnRealtimeDataReceived;
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -101,11 +119,35 @@ public class TradingWorker : BackgroundService
                     // 1. 조건식 변경 감지 (60초마다 체크)
                     await CheckAndReloadConditionsAsync();
 
-                    // 2. 조건 평가 및 후보 추적 (10초마다)
-                    await EvaluateConditionsAsync();
+                    // 2. 실시간 모니터링 vs 스냅샷 방식 분기
+                    if (_tradingSettings.UseRealtimeMonitoring)
+                    {
+                        // 기존 실시간 방식
+                        await EvaluateConditionsAsync();
+                        _candidateTracker.RemoveExpiredCandidates();
+                    }
+                    else
+                    {
+                        // 새로운 스냅샷 방식
+                        var currentEt = GetEasternTime();
+                        var currentTimeStr = currentEt.ToString("HH:mm");
 
-                    // 3. 만료된 후보 제거
-                    _candidateTracker.RemoveExpiredCandidates();
+                        // 디버그: 현재 시간과 스캔 시간 목록 출력
+                        _logger.LogDebug("Current ET time: {CurrentTime}, Scan times: [{ScanTimes}], Orders executed: {OrdersExecuted}",
+                            currentTimeStr,
+                            string.Join(", ", _tradingSettings.ScanTimes),
+                            _ordersExecutedToday);
+
+                        // 스캔 시간 체크
+                        if (_tradingSettings.ScanTimes.Contains(currentTimeStr) && !_ordersExecutedToday)
+                        {
+                            _logger.LogInformation("Scan time detected: {Time}", currentTimeStr);
+                            await ExecuteScanAsync();
+                        }
+                    }
+
+                    // 3. 자정 리셋 체크
+                    CheckDailyReset();
 
                     // 4. 주문 실행 체크 (15:40 ET)
                     await CheckAndExecuteOrdersAsync();
@@ -113,8 +155,11 @@ public class TradingWorker : BackgroundService
                     // 5. DB 상태 업데이트 (통계)
                     await UpdateWorkerMetricsAsync();
 
-                    // 6. 대기 (10초)
-                    await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                    // 6. 대기 (실시간: 10초, 스냅샷: 1분)
+                    var delay = _tradingSettings.UseRealtimeMonitoring
+                        ? TimeSpan.FromSeconds(10)
+                        : TimeSpan.FromMinutes(1);
+                    await Task.Delay(delay, stoppingToken);
                 }
                 catch (Exception ex)
                 {
@@ -181,14 +226,30 @@ public class TradingWorker : BackgroundService
         // Top 300 종목 초기 로드
         await _stockService.RefreshTop300Async();
         var top300 = _stockService.GetCachedTop300();
+        _top300Symbols = top300.Select(s => s.Symbol).ToList();
 
-        _logger.LogInformation("Top 300 stocks loaded: {Count} stocks", top300.Count);
+        _logger.LogInformation("Top 300 stocks loaded: {Count} stocks", _top300Symbols.Count);
 
-        // WebSocket 시작
-        await _webSocketManager.StartAllSessionsAsync(top300);
+        // 과거 캔들 데이터 로드 (MovingAverage, PriceComparison 조건용)
+        _logger.LogInformation("Loading historical data for {Count} stocks...", _top300Symbols.Count);
+        await _historicalDataService.LoadHistoricalDataAsync(_top300Symbols);
+        _logger.LogInformation("Historical data loaded: {Count} stocks cached",
+            _historicalDataService.GetCachedSymbolCount());
 
-        _logger.LogInformation("WebSocket sessions started: {Count} stocks subscribed",
-            _webSocketManager.TotalSubscribedStockCount);
+        // WebSocket은 조건부 시작
+        if (_tradingSettings.UseRealtimeMonitoring)
+        {
+            await _webSocketManager.StartAllSessionsAsync(top300);
+            _logger.LogInformation("WebSocket real-time monitoring enabled: {Count} stocks subscribed",
+                _webSocketManager.TotalSubscribedStockCount);
+        }
+        else
+        {
+            _logger.LogInformation("Snapshot-based scanning enabled");
+            _logger.LogInformation("Scan schedule: {ScanTimes}", string.Join(", ", _tradingSettings.ScanTimes));
+            _logger.LogInformation("Required scan matches: {Required}/{Total}",
+                _tradingSettings.RequiredScanMatches, _tradingSettings.ScanTimes.Count);
+        }
 
         _logger.LogInformation("TradingWorker initialization complete");
     }
@@ -263,8 +324,27 @@ public class TradingWorker : BackgroundService
 
         _logger.LogInformation("Order time window detected - preparing orders");
 
-        // 확정된 후보 조회
-        var confirmedCandidates = _candidateTracker.GetConfirmedCandidates();
+        // 후보 조회 방식 분기
+        List<CandidateStock> confirmedCandidates;
+
+        if (_tradingSettings.UseRealtimeMonitoring)
+        {
+            // 기존 방식: CandidateTracker에서 조회
+            confirmedCandidates = _candidateTracker.GetConfirmedCandidates();
+        }
+        else
+        {
+            // 새로운 방식: MultiPointValidator에서 조회
+            var multiPointResult = _multiPointValidator.GetFinalCandidates(
+                _tradingSettings.RequiredScanMatches);
+
+            _logger.LogInformation("Multi-point validation result: {Result}", multiPointResult);
+
+            confirmedCandidates = multiPointResult.FinalCandidates;
+
+            // 스캔 결과 초기화
+            _multiPointValidator.ClearResults();
+        }
 
         if (confirmedCandidates.Count == 0)
         {
@@ -273,16 +353,6 @@ public class TradingWorker : BackgroundService
             _lastOrderExecutionDate = DateTime.UtcNow;
             return;
         }
-
-        // Top 2 하락 종목 선정
-        var top2 = confirmedCandidates
-            .OrderBy(c => c.CurrentChangeRate)
-            .Take(_tradingSettings.MaxStocksToTrade)
-            .ToList();
-
-        _logger.LogInformation("Selected Top {Count} declining stocks for order: {Stocks}",
-            top2.Count,
-            string.Join(", ", top2.Select(s => s.ToString())));
 
         // 실제 계좌 잔고 조회
         decimal accountBalance;
@@ -306,16 +376,43 @@ public class TradingWorker : BackgroundService
             return;
         }
 
-        // 주문 계획 생성
+        // 주문 계획 생성 (조건 충족 종목 개수에 따라 투자 비율 결정)
         var orderPlans = new List<OrderExecutionPlan>();
-        foreach (var candidate in top2)
+
+        if (confirmedCandidates.Count == 1)
         {
+            // 1개 종목: 전체 금액 100% 투자
+            var candidate = confirmedCandidates[0];
+
+            _logger.LogInformation("Single candidate detected - investing 100% in {Symbol}", candidate.Symbol);
+
             var plan = _orderExecutor.CreateOrderPlan(
                 candidate,
                 accountBalance,
-                (decimal)_tradingSettings.AllocationPercent / 100m); // 5% → 0.05
+                allocationPercent: 1.0m); // 100% 투자
 
             orderPlans.Add(plan);
+        }
+        else if (confirmedCandidates.Count >= 2)
+        {
+            // 2개 이상: 하락률 상위 2개 선정, 각 50% 투자
+            var top2 = confirmedCandidates
+                .OrderBy(c => c.CurrentChangeRate) // 하락률 높은 순
+                .Take(2)
+                .ToList();
+
+            _logger.LogInformation("Multiple candidates detected - investing 50% each in top 2 declining stocks: {Stocks}",
+                string.Join(", ", top2.Select(s => $"{s.Symbol} ({s.CurrentChangeRate:P2})")));
+
+            foreach (var candidate in top2)
+            {
+                var plan = _orderExecutor.CreateOrderPlan(
+                    candidate,
+                    accountBalance,
+                    allocationPercent: 0.5m); // 50% 투자
+
+                orderPlans.Add(plan);
+            }
         }
 
         // 주문 실행
@@ -601,10 +698,168 @@ public class TradingWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 스냅샷 기반 스캔 실행
+    /// </summary>
+    private async Task ExecuteScanAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Starting snapshot scan... (Total scans: {Count})",
+                _multiPointValidator.ScanCount);
+
+            // Top 300 종목 캐시에서 직접 가져오기 (API 호출 0번!)
+            var top300Items = _stockService.GetCachedTop300();
+
+            if (top300Items.Count == 0)
+            {
+                _logger.LogWarning("No Top 300 stocks available in cache");
+                var failedResult = new ScanResult
+                {
+                    ScanTime = GetEasternTime(),
+                    TotalStocksScanned = 0,
+                    IsSuccess = false,
+                    ErrorMessage = "No cached Top 300 data"
+                };
+                _multiPointValidator.AddScanResult(failedResult);
+                return;
+            }
+
+            // TradeRankingItem을 CachedStockData로 변환
+            var snapshotData = top300Items.Select(item => new CachedStockData
+            {
+                Symbol = item.Symbol,
+                LatestData = new RealtimeStockData
+                {
+                    Symbol = item.Symbol,
+                    CurrentPrice = item.Last,
+                    ChangeRate = item.ChangeRate,
+                    PriceDifference = item.Difference,
+                    AccumulatedTradeAmount = item.TradeAmount,
+                    ExecutionTime = DateTime.UtcNow.ToString("HHmmss")
+                },
+                LastUpdatedAt = DateTime.UtcNow,
+                UpdateCount = 1
+            }).ToList();
+
+            _logger.LogInformation("Snapshot data prepared: {Count} stocks from cache", snapshotData.Count);
+
+            // 조건 평가
+            var matchedData = _conditionEvaluator.EvaluateAllStocks(_tradingCondition, snapshotData);
+
+            // CachedStockData를 CandidateStock으로 변환
+            var matchedCandidates = matchedData.Select(stockData => new CandidateStock
+            {
+                Symbol = stockData.Symbol,
+                Name = stockData.LatestData?.Symbol ?? stockData.Symbol,
+                FirstConfirmedAt = DateTime.UtcNow,
+                SecondConfirmedAt = null,
+                CurrentChangeRate = stockData.ChangeRate,
+                CurrentPrice = stockData.CurrentPrice,
+                TradeAmount = stockData.TradeAmount
+            }).ToList();
+
+            _logger.LogInformation("Condition evaluation: {Matched}/{Total} stocks matched", matchedCandidates.Count, snapshotData.Count);
+
+            // 스캔 결과 저장
+            var scanResult = new ScanResult
+            {
+                ScanTime = GetEasternTime(),
+                MatchedStocks = matchedCandidates,
+                TotalStocksScanned = snapshotData.Count(),
+                IsSuccess = true
+            };
+
+            _multiPointValidator.AddScanResult(scanResult);
+            _logger.LogInformation("Scan result added: [{ScanTime}] Matched: {Matched}/{Total} stocks",
+                scanResult.ScanTime.ToString("HH:mm:ss"), matchedCandidates.Count, snapshotData.Count());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during scan execution");
+            var failedResult = new ScanResult
+            {
+                ScanTime = GetEasternTime(),
+                TotalStocksScanned = _top300Symbols.Count,
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
+            _multiPointValidator.AddScanResult(failedResult);
+        }
+
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 자정 리셋 체크
+    /// </summary>
+    private void CheckDailyReset()
+    {
+        var today = DateTime.UtcNow.Date;
+        if (_lastOrderExecutionDate.Date < today && _ordersExecutedToday)
+        {
+            _logger.LogInformation("Daily reset: Clearing order execution flag");
+            _ordersExecutedToday = false;
+
+            if (!_tradingSettings.UseRealtimeMonitoring)
+            {
+                _multiPointValidator.ClearResults();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 미국 동부 시간 (ET) 계산
+    /// </summary>
+    private DateTime GetEasternTime()
+    {
+        try
+        {
+            var etZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, etZone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            try
+            {
+                var etZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, etZone);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                var now = DateTime.UtcNow;
+                var isDst = IsDaylightSavingTimePeriod(now);
+                var offset = isDst ? -4 : -5;
+                return now.AddHours(offset);
+            }
+        }
+    }
+
+    private static bool IsDaylightSavingTimePeriod(DateTime utcNow)
+    {
+        var year = utcNow.Year;
+        var marchSecondSunday = GetNthSunday(year, 3, 2);
+        var dstStart = new DateTime(year, 3, marchSecondSunday, 7, 0, 0, DateTimeKind.Utc);
+        var novemberFirstSunday = GetNthSunday(year, 11, 1);
+        var dstEnd = new DateTime(year, 11, novemberFirstSunday, 6, 0, 0, DateTimeKind.Utc);
+        return utcNow >= dstStart && utcNow < dstEnd;
+    }
+
+    private static int GetNthSunday(int year, int month, int n)
+    {
+        var firstDay = new DateTime(year, month, 1);
+        var firstSunday = firstDay.Day + ((7 - (int)firstDay.DayOfWeek) % 7);
+        if (firstSunday == 0) firstSunday = 7;
+        return firstSunday + (n - 1) * 7;
+    }
+
     public override void Dispose()
     {
         _heartbeatTimer?.Dispose();
-        _webSocketManager.RealtimeDataReceived -= OnRealtimeDataReceived;
+        if (_tradingSettings.UseRealtimeMonitoring)
+        {
+            _webSocketManager.RealtimeDataReceived -= OnRealtimeDataReceived;
+        }
         base.Dispose();
     }
 }

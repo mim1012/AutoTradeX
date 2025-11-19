@@ -137,5 +137,72 @@ namespace AutoTrader.Core.Repositories
             return await _context.ConditionSets
                 .AnyAsync(cs => cs.AccountId == accountId);
         }
+
+        /// <summary>
+        /// 다른 계좌의 조건식을 현재 계좌로 복사
+        /// </summary>
+        /// <param name="sourceAccountId">복사할 원본 계좌 ID</param>
+        /// <param name="targetAccountId">복사 대상 계좌 ID</param>
+        /// <returns>복사된 조건식</returns>
+        public async Task<ConditionSet> CopyConditionSetAsync(int sourceAccountId, int targetAccountId)
+        {
+            // 원본 조건식 조회
+            var sourceConditionSet = await GetConditionSetByAccountIdAsync(sourceAccountId);
+            if (sourceConditionSet == null)
+                throw new InvalidOperationException($"원본 계좌(ID: {sourceAccountId})에 조건식이 없습니다.");
+
+            // 대상 계좌가 존재하는지 확인
+            var targetAccount = await _context.Accounts.FindAsync(targetAccountId);
+            if (targetAccount == null)
+                throw new InvalidOperationException($"대상 계좌(ID: {targetAccountId})를 찾을 수 없습니다.");
+
+            // 대상 계좌의 기존 조건식 삭제
+            await DeleteConditionSetByAccountIdAsync(targetAccountId);
+
+            // 새 조건식 생성 (복사)
+            var copiedConditionSet = new ConditionSet
+            {
+                AccountId = targetAccountId,
+                Name = sourceConditionSet.Name + " (복사본)",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.ConditionSets.Add(copiedConditionSet);
+            await _context.SaveChangesAsync();
+
+            // 조건 복사
+            foreach (var sourceCondition in sourceConditionSet.Conditions.OrderBy(c => c.ConditionOrder))
+            {
+                var copiedCondition = new Condition
+                {
+                    ConditionSetId = copiedConditionSet.ConditionSetId,
+                    ConditionOrder = sourceCondition.ConditionOrder,
+                    ConditionType = sourceCondition.ConditionType,
+                    Parameters = sourceCondition.Parameters,
+                    LogicOperator = sourceCondition.LogicOperator
+                };
+
+                _context.Conditions.Add(copiedCondition);
+            }
+
+            await _context.SaveChangesAsync();
+
+            // 복사된 조건식 반환 (조건 포함)
+            return await GetConditionSetByAccountIdAsync(targetAccountId)
+                ?? throw new InvalidOperationException("조건식 복사 중 오류가 발생했습니다.");
+        }
+
+        /// <summary>
+        /// 모든 조건식 목록 조회 (조건식 복사 시 사용)
+        /// </summary>
+        public async Task<List<ConditionSet>> GetAllConditionSetsAsync()
+        {
+            return await _context.ConditionSets
+                .Include(cs => cs.Account)
+                .Include(cs => cs.Conditions.OrderBy(c => c.ConditionOrder))
+                .OrderBy(cs => cs.ConditionSetId)
+                .ToListAsync();
+        }
     }
 }

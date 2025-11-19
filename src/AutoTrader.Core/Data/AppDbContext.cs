@@ -56,7 +56,6 @@ namespace AutoTrader.Core.Data
                 entity.Property(e => e.AppKey).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.AppSecret).IsRequired().HasMaxLength(500);
                 entity.Property(e => e.IsActive).HasDefaultValue(false);
-                entity.Property(e => e.BuyRatio).HasDefaultValue(100.0);
                 entity.Property(e => e.ExcludeOwnedStocks).HasDefaultValue(false);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
                 entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");

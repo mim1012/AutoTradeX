@@ -1,4 +1,5 @@
 using System.Windows;
+using AutoTrader.UI.ViewModels;
 
 namespace AutoTrader.UI.Views
 {
@@ -7,9 +8,10 @@ namespace AutoTrader.UI.Views
     /// </summary>
     public partial class AccountManagementDialog : Window
     {
-        public AccountManagementDialog()
+        public AccountManagementDialog(AccountManagementViewModel viewModel)
         {
             InitializeComponent();
+            DataContext = viewModel;
         }
     }
 }

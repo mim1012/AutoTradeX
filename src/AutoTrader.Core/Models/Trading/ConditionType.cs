@@ -17,6 +17,12 @@ public enum ConditionType
     /// <summary>거래대금 조건 (TradeAmount > X)</summary>
     TradeAmount = 4,
 
+    /// <summary>이동평균선 조건 (현재가가 MA 대비 ±X% 이내)</summary>
+    MovingAverage = 5,
+
+    /// <summary>주가 비교 조건 (n봉 OHLC 요소 간 비교)</summary>
+    PriceComparison = 6,
+
     /// <summary>복합 조건 (여러 조건 조합)</summary>
     Combined = 99
 }

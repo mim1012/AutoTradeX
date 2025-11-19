@@ -7,7 +7,7 @@
         xmlns:vm="clr-namespace:AutoTrader.UI.ViewModels"
         mc:Ignorable="d"
         Title="계좌 상세 정보"
-        Height="600" Width="600"
+        Height="800" Width="600"
         WindowStartupLocation="CenterOwner"
         Background="#F5F5F5"
         ResizeMode="CanResize">
@@ -204,53 +204,29 @@
         <!-- ========================================
              매매 설정
         ========================================= -->
-        <Border Grid.Row="3" 
-                Background="White" 
-                BorderBrush="#E0E0E0" 
-                BorderThickness="1" 
-                CornerRadius="8" 
+        <Border Grid.Row="3"
+                Background="White"
+                BorderBrush="#E0E0E0"
+                BorderThickness="1"
+                CornerRadius="8"
                 Padding="20"
                 Margin="0,0,0,15">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
 
                 <!-- 타이틀 -->
-                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="매매 설정" 
-                           FontSize="16" 
-                           FontWeight="Bold" 
+                <TextBlock Grid.Row="0"
+                           Text="매매 설정"
+                           FontSize="16"
+                           FontWeight="Bold"
                            Margin="0,0,0,15"/>
 
-                <!-- 매수 비율 -->
-                <TextBlock Grid.Row="1" Grid.Column="0"
-                           Text="매수 비율:" 
-                           FontSize="14" 
-                           VerticalAlignment="Center"
-                           Margin="0,0,10,10"/>
-                <StackPanel Grid.Row="1" Grid.Column="1" 
-                            Orientation="Horizontal"
-                            Margin="0,0,0,10">
-                    <TextBox Text="{Binding BuyRatio, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                             Width="100"
-                             Height="30"
-                             VerticalContentAlignment="Center"
-                             Margin="0,0,5,0"/>
-                    <TextBlock Text="%" 
-                               FontSize="14" 
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-
                 <!-- 관심종목 제외 -->
-                <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                          Content="관심종목 제외 (보유 종목은 조건 맞아도 매수 안함)" 
+                <CheckBox Grid.Row="1"
+                          Content="관심종목 제외 (보유 종목은 조건 맞아도 매수 안함)"
                           IsChecked="{Binding ExcludeOwnedStocks, Mode=TwoWay}"
                           FontSize="14"
                           VerticalAlignment="Center"/>

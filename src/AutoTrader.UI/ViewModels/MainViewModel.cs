@@ -537,7 +537,8 @@ public class MainViewModel : ViewModelBase
 
     private void OpenAccountManagement()
     {
-        var dialog = new AccountManagementDialog
+        var viewModel = new AccountManagementViewModel();
+        var dialog = new AccountManagementDialog(viewModel)
         {
             Owner = Application.Current.MainWindow
         };
@@ -556,15 +557,20 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        var dialog = new ConditionEditorDialog
+        var dialog = new ConditionSetEditorDialog
         {
             Owner = Application.Current.MainWindow
         };
 
-        if (dialog.ShowDialog() == true)
+        // ViewModel에 계좌 ID 전달
+        if (dialog.DataContext is ConditionSetEditorViewModel viewModel)
         {
-            _ = LoadActiveAccountAsync();
+            viewModel.LoadConditionSet(_activeAccount.AccountId);
         }
+
+        dialog.ShowDialog();
+        // 조건식 변경 후 다시 로드
+        _ = LoadActiveAccountAsync();
     }
 
     private void ToggleSystem()

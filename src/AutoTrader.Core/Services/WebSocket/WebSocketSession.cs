@@ -347,8 +347,40 @@ public class WebSocketSession : IDisposable
     /// </summary>
     public void Dispose()
     {
+        _logger.LogDebug("Disposing WebSocket session {SessionId}", _sessionId);
+
+        // 취소 요청
         _cts?.Cancel();
-        _webSocket?.Dispose();
+
+        // Task 완료 대기 (최대 5초)
+        try
+        {
+            var tasks = new List<Task>();
+            if (_receiveTask != null) tasks.Add(_receiveTask);
+            if (_heartbeatTask != null) tasks.Add(_heartbeatTask);
+
+            if (tasks.Count > 0)
+            {
+                Task.WaitAll(tasks.ToArray(), TimeSpan.FromSeconds(5));
+            }
+        }
+        catch (AggregateException ex)
+        {
+            _logger.LogWarning(ex, "Timeout waiting for WebSocket tasks to complete for session {SessionId}", _sessionId);
+        }
+
+        // 리소스 정리
+        try
+        {
+            _webSocket?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disposing WebSocket for session {SessionId}", _sessionId);
+        }
+
         _cts?.Dispose();
+
+        _logger.LogInformation("WebSocket session {SessionId} disposed", _sessionId);
     }
 }

@@ -12,9 +12,6 @@
         Background="#F5F5F5"
         ResizeMode="NoResize">
 
-    <Window.DataContext>
-        <vm:AccountManagementViewModel/>
-    </Window.DataContext>
 
     <Grid Margin="20">
         <Grid.RowDefinitions>

@@ -55,7 +55,7 @@
                 <ComboBox x:Name="ConditionTypeComboBox"
                           Style="{StaticResource ComboBoxStyle}"
                           SelectionChanged="ConditionTypeComboBox_SelectionChanged">
-                    <ComboBoxItem Content="A) 등락률 조건" Tag="PriceChange"/>
+                    <ComboBoxItem Content="A) 등락률 조건" Tag="PriceChange" ToolTip="전일 종가 대비 현재가 변동률 (%) - KIS API 제공"/>
                     <ComboBoxItem Content="B) 이동평균선 조건" Tag="MovingAverage"/>
                     <ComboBoxItem Content="C) 거래대금 조건" Tag="TradeVolume"/>
                     <ComboBoxItem Content="D) 주가 비교 조건" Tag="PriceComparison"/>

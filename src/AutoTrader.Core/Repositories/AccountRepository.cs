@@ -1,5 +1,6 @@
 using AutoTrader.Core.Data;
 using AutoTrader.Core.Models.Database;
+using AutoTrader.Core.Services.Security;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -10,59 +11,95 @@ namespace AutoTrader.Core.Repositories
 {
     /// <summary>
     /// 계좌 정보에 대한 데이터베이스 CRUD 작업을 담당하는 Repository
+    /// - API 키 자동 암호화/복호화 처리
     /// </summary>
     public class AccountRepository
     {
         private readonly AppDbContext _context;
+        private readonly IEncryptionService _encryptionService;
 
-        public AccountRepository(AppDbContext context)
+        public AccountRepository(AppDbContext context, IEncryptionService encryptionService)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _encryptionService = encryptionService ?? throw new ArgumentNullException(nameof(encryptionService));
         }
 
         /// <summary>
         /// 모든 계좌 조회 (조건식 포함)
+        /// - API 키 자동 복호화
         /// </summary>
         public async Task<List<Account>> GetAllAccountsAsync()
         {
-            return await _context.Accounts
+            var accounts = await _context.Accounts
                 .Include(a => a.ConditionSet)
                     .ThenInclude(cs => cs.Conditions.OrderBy(c => c.ConditionOrder))
                 .OrderBy(a => a.AccountId)
                 .ToListAsync();
+
+            // API 키 복호화
+            foreach (var account in accounts)
+            {
+                DecryptAccount(account);
+            }
+
+            return accounts;
         }
 
         /// <summary>
         /// 특정 계좌 조회 (ID 기준)
+        /// - API 키 자동 복호화
         /// </summary>
         public async Task<Account?> GetAccountByIdAsync(int accountId)
         {
-            return await _context.Accounts
+            var account = await _context.Accounts
                 .Include(a => a.ConditionSet)
                     .ThenInclude(cs => cs.Conditions.OrderBy(c => c.ConditionOrder))
                 .FirstOrDefaultAsync(a => a.AccountId == accountId);
+
+            if (account != null)
+            {
+                DecryptAccount(account);
+            }
+
+            return account;
         }
 
         /// <summary>
         /// 특정 계좌 조회 (계좌번호 기준)
+        /// - API 키 자동 복호화
         /// </summary>
         public async Task<Account?> GetAccountByNumberAsync(string accountNumber)
         {
-            return await _context.Accounts
+            var account = await _context.Accounts
                 .Include(a => a.ConditionSet)
                     .ThenInclude(cs => cs.Conditions.OrderBy(c => c.ConditionOrder))
                 .FirstOrDefaultAsync(a => a.AccountNumber == accountNumber);
+
+            if (account != null)
+            {
+                DecryptAccount(account);
+            }
+
+            return account;
         }
 
         /// <summary>
         /// 활성 계좌 조회 (최대 1개)
+        /// - API 키 자동 복호화
         /// </summary>
         public async Task<Account?> GetActiveAccountAsync()
         {
-            return await _context.Accounts
+            var account = await _context.Accounts
                 .Include(a => a.ConditionSet)
                     .ThenInclude(cs => cs.Conditions.OrderBy(c => c.ConditionOrder))
                 .FirstOrDefaultAsync(a => a.IsActive);
+
+            if (account != null)
+            {
+                DecryptAccount(account);
+            }
+
+            return account;
         }
 
         /// <summary>
@@ -73,21 +110,45 @@ namespace AutoTrader.Core.Repositories
             if (account == null)
                 throw new ArgumentNullException(nameof(account));
 
-            // 계좌번호 중복 확인
-            var existing = await GetAccountByNumberAsync(account.AccountNumber);
-            if (existing != null)
-                throw new InvalidOperationException($"계좌번호 '{account.AccountNumber}'는 이미 등록되어 있습니다.");
+            // 트랜잭션 시작
+            using var transaction = await _context.Database.BeginTransactionAsync();
 
-            // 활성 계좌로 설정 시 기존 활성 계좌 비활성화
-            if (account.IsActive)
+            try
             {
-                await DeactivateAllAccountsAsync();
+                // 계좌번호 중복 확인
+                var existing = await GetAccountByNumberAsync(account.AccountNumber);
+                if (existing != null)
+                    throw new InvalidOperationException($"계좌번호 '{account.AccountNumber}'는 이미 등록되어 있습니다.");
+
+                // 활성 계좌로 설정 시 기존 활성 계좌 비활성화
+                if (account.IsActive)
+                {
+                    await DeactivateAllAccountsAsync();
+                }
+
+                // API 키 암호화
+                EncryptAccount(account);
+
+                _context.Accounts.Add(account);
+                await _context.SaveChangesAsync();
+
+                // 트랜잭션 커밋
+                await transaction.CommitAsync();
+
+                // 반환 전 복호화
+                DecryptAccount(account);
+
+                // 엔티티 추적 해제 (복호화된 값이 DB에 저장되지 않도록)
+                _context.Entry(account).State = EntityState.Detached;
+
+                return account;
             }
-
-            _context.Accounts.Add(account);
-            await _context.SaveChangesAsync();
-
-            return account;
+            catch
+            {
+                // 롤백
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         /// <summary>
@@ -98,21 +159,45 @@ namespace AutoTrader.Core.Repositories
             if (account == null)
                 throw new ArgumentNullException(nameof(account));
 
-            var existing = await _context.Accounts.FindAsync(account.AccountId);
-            if (existing == null)
-                throw new InvalidOperationException($"계좌 ID '{account.AccountId}'를 찾을 수 없습니다.");
+            // 트랜잭션 시작
+            using var transaction = await _context.Database.BeginTransactionAsync();
 
-            // 활성 계좌로 설정 시 기존 활성 계좌 비활성화
-            if (account.IsActive && !existing.IsActive)
+            try
             {
-                await DeactivateAllAccountsAsync();
+                var existing = await _context.Accounts.FindAsync(account.AccountId);
+                if (existing == null)
+                    throw new InvalidOperationException($"계좌 ID '{account.AccountId}'를 찾을 수 없습니다.");
+
+                // 활성 계좌로 설정 시 기존 활성 계좌 비활성화
+                if (account.IsActive && !existing.IsActive)
+                {
+                    await DeactivateAllAccountsAsync();
+                }
+
+                // API 키 암호화
+                EncryptAccount(account);
+
+                // 엔티티 업데이트
+                _context.Entry(existing).CurrentValues.SetValues(account);
+                await _context.SaveChangesAsync();
+
+                // 트랜잭션 커밋
+                await transaction.CommitAsync();
+
+                // 반환 전 복호화
+                DecryptAccount(existing);
+
+                // 엔티티 추적 해제 (복호화된 값이 DB에 저장되지 않도록)
+                _context.Entry(existing).State = EntityState.Detached;
+
+                return existing;
             }
-
-            // 엔티티 업데이트
-            _context.Entry(existing).CurrentValues.SetValues(account);
-            await _context.SaveChangesAsync();
-
-            return existing;
+            catch
+            {
+                // 롤백
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         /// <summary>
@@ -177,6 +262,46 @@ namespace AutoTrader.Core.Repositories
         {
             return await _context.Accounts
                 .AnyAsync(a => a.AccountNumber == accountNumber);
+        }
+
+        /// <summary>
+        /// 계좌 API 키 암호화 (저장 전 호출)
+        /// </summary>
+        private void EncryptAccount(Account account)
+        {
+            if (!string.IsNullOrWhiteSpace(account.AppKey))
+            {
+                account.AppKey = _encryptionService.Encrypt(account.AppKey);
+            }
+
+            if (!string.IsNullOrWhiteSpace(account.AppSecret))
+            {
+                account.AppSecret = _encryptionService.Encrypt(account.AppSecret);
+            }
+        }
+
+        /// <summary>
+        /// 계좌 API 키 복호화 (조회 후 호출)
+        /// </summary>
+        private void DecryptAccount(Account account)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(account.AppKey))
+                {
+                    account.AppKey = _encryptionService.Decrypt(account.AppKey);
+                }
+
+                if (!string.IsNullOrWhiteSpace(account.AppSecret))
+                {
+                    account.AppSecret = _encryptionService.Decrypt(account.AppSecret);
+                }
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                // 암호화 해독 실패 시 원본 값 유지 (이미 평문이거나 손상된 데이터)
+                // 로그만 남기고 예외를 삼킴
+            }
         }
     }
 }

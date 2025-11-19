@@ -172,12 +172,26 @@ public class ApiThrottler : IApiThrottler
         var rateLimitResetTimer = new System.Timers.Timer(1000);
         rateLimitResetTimer.Elapsed += (_, _) =>
         {
-            // 1초마다 세마포어를 MaxCallsPerSecond만큼 복원
-            var currentCount = _rateLimiter.CurrentCount;
-            var toRelease = _settings.MaxCallsPerSecond - currentCount;
-            if (toRelease > 0)
+            try
             {
-                _rateLimiter.Release(toRelease);
+                // 1초마다 세마포어를 MaxCallsPerSecond만큼 복원
+                var currentCount = _rateLimiter.CurrentCount;
+                var toRelease = Math.Min(
+                    _settings.MaxCallsPerSecond - currentCount,
+                    _settings.MaxCallsPerSecond);
+
+                if (toRelease > 0 && toRelease <= _settings.MaxCallsPerSecond)
+                {
+                    _rateLimiter.Release(toRelease);
+                }
+            }
+            catch (SemaphoreFullException ex)
+            {
+                _logger.LogWarning(ex, "Semaphore already at max capacity, skipping release");
+            }
+            catch (ObjectDisposedException)
+            {
+                // Timer disposal race condition - ignore
             }
         };
         rateLimitResetTimer.Start();

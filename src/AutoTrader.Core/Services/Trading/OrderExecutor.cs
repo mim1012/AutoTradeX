@@ -2,6 +2,8 @@ using AutoTrader.Core.Configuration;
 using AutoTrader.Core.Models.Trading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Polly;
+using Polly.Retry;
 
 namespace AutoTrader.Core.Services.Trading;
 
@@ -10,6 +12,7 @@ namespace AutoTrader.Core.Services.Trading;
 /// - LOC 주문 실행 (현재가 × 1.05)
 /// - 마감 10분 전 주문 시간 체크
 /// - 수량 계산 (계좌 잔고 × 할당 비율)
+/// - Polly 재시도 정책 (네트워크 오류 시 자동 재시도)
 /// </summary>
 public class OrderExecutor : IOrderExecutor
 {
@@ -17,9 +20,12 @@ public class OrderExecutor : IOrderExecutor
     private readonly TradingSettings _tradingSettings;
     private readonly ILogger<OrderExecutor> _logger;
 
-    // 미국 동부 시간 (ET) 마감 20분 전 시각
-    private static readonly TimeSpan OrderStartTime = new(15, 40, 0); // 15:40 ET
+    // 미국 동부 시간 (ET) 주문 시간 (마감 20분 전부터)
+    private static readonly TimeSpan OrderStartTime = new(15, 40, 0); // 15:40 ET (마감 20분 전)
     private static readonly TimeSpan OrderEndTime = new(16, 0, 0);    // 16:00 ET (마감)
+
+    // Polly 재시도 정책 (네트워크 오류 시 3회 재시도, 지수 백오프)
+    private readonly AsyncRetryPolicy _retryPolicy;
 
     public OrderExecutor(
         OrderApiService orderApi,
@@ -29,6 +35,22 @@ public class OrderExecutor : IOrderExecutor
         _orderApi = orderApi ?? throw new ArgumentNullException(nameof(orderApi));
         _tradingSettings = tradingSettings?.Value ?? throw new ArgumentNullException(nameof(tradingSettings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // Polly 재시도 정책 설정 (3회 재시도, 지수 백오프: 1s, 2s, 4s)
+        _retryPolicy = Policy
+            .Handle<HttpRequestException>() // 네트워크 오류
+            .Or<TaskCanceledException>()     // 타임아웃
+            .WaitAndRetryAsync(
+                retryCount: 3,
+                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt - 1)),
+                onRetry: (exception, timeSpan, retryCount, context) =>
+                {
+                    _logger.LogWarning(exception,
+                        "Order execution failed (attempt {RetryCount}/3), retrying in {Delay}s...",
+                        retryCount, timeSpan.TotalSeconds);
+                });
+
+        _logger.LogInformation("OrderExecutor initialized with Polly retry policy (3 attempts, exponential backoff)");
     }
 
     /// <inheritdoc/>
@@ -43,10 +65,10 @@ public class OrderExecutor : IOrderExecutor
         if (accountBalance <= 0)
             throw new ArgumentException("Account balance must be positive", nameof(accountBalance));
 
-        // 할당 금액 계산 (예: $10,000 × 5% = $500)
+        // 할당 금액 계산 (예: $10,000 × 50% = $5,000)
         var availableAmount = accountBalance * allocationPercent;
 
-        // LOC 가격 계산 (현재가 × 1.05)
+        // LOC 가격 계산 (현재가 × LimitPriceMultiplier, 기본 1.03 = +3%)
         var locPrice = candidate.CurrentPrice * (decimal)_tradingSettings.LimitPriceMultiplier;
 
         // 주문 수량 계산 (소수점 버림)
@@ -105,11 +127,14 @@ public class OrderExecutor : IOrderExecutor
                 return result;
             }
 
-            // KIS API 주문 실행
-            var orderResponse = await _orderApi.PlaceLocBuyOrderAsync(
-                plan.Candidate.Symbol,
-                plan.Quantity,
-                plan.LocPrice);
+            // KIS API 주문 실행 (Polly 재시도 정책 적용)
+            var orderResponse = await _retryPolicy.ExecuteAsync(async () =>
+            {
+                return await _orderApi.PlaceLocBuyOrderAsync(
+                    plan.Candidate.Symbol,
+                    plan.Quantity,
+                    plan.LocPrice);
+            });
 
             // 응답 매핑
             result.IsSuccess = orderResponse.IsSuccess;
@@ -174,7 +199,7 @@ public class OrderExecutor : IOrderExecutor
         var etNow = GetEasternTime();
         var currentTime = etNow.TimeOfDay;
 
-        // 15:50 ~ 16:00 ET 범위 체크
+        // 15:40 ~ 16:00 ET 범위 체크 (마감 20분 전부터)
         return currentTime >= OrderStartTime && currentTime < OrderEndTime;
     }
 
@@ -204,7 +229,7 @@ public class OrderExecutor : IOrderExecutor
     /// 미국 동부 시간 (ET) 계산
     /// DST (Daylight Saving Time) 자동 처리
     /// </summary>
-    private static DateTime GetEasternTime()
+    private DateTime GetEasternTime()
     {
         try
         {
@@ -215,9 +240,53 @@ public class OrderExecutor : IOrderExecutor
         }
         catch (TimeZoneNotFoundException)
         {
-            // Linux 환경에서는 "America/New_York" 사용
-            var etZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
-            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, etZone);
+            try
+            {
+                // Linux 환경에서는 "America/New_York" 사용
+                var etZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, etZone);
+            }
+            catch (TimeZoneNotFoundException ex)
+            {
+                // Fallback: Manual UTC offset calculation with DST estimation
+                _logger.LogError(ex, "Failed to find ET timezone, using manual UTC offset with DST estimation");
+
+                var now = DateTime.UtcNow;
+                var isDst = IsDaylightSavingTimePeriod(now);
+                var offset = isDst ? -4 : -5;
+
+                return now.AddHours(offset);
+            }
         }
+    }
+
+    /// <summary>
+    /// DST(서머타임) 기간 추정
+    /// 3월 두 번째 일요일 2AM ~ 11월 첫 번째 일요일 2AM
+    /// </summary>
+    private static bool IsDaylightSavingTimePeriod(DateTime utcNow)
+    {
+        var year = utcNow.Year;
+
+        // DST 시작: 3월 두 번째 일요일 2AM EST (= 7AM UTC)
+        var marchSecondSunday = GetNthSunday(year, 3, 2);
+        var dstStart = new DateTime(year, 3, marchSecondSunday, 7, 0, 0, DateTimeKind.Utc);
+
+        // DST 종료: 11월 첫 번째 일요일 2AM EDT (= 6AM UTC)
+        var novemberFirstSunday = GetNthSunday(year, 11, 1);
+        var dstEnd = new DateTime(year, 11, novemberFirstSunday, 6, 0, 0, DateTimeKind.Utc);
+
+        return utcNow >= dstStart && utcNow < dstEnd;
+    }
+
+    /// <summary>
+    /// 특정 월의 N번째 일요일 날짜 계산
+    /// </summary>
+    private static int GetNthSunday(int year, int month, int n)
+    {
+        var firstDay = new DateTime(year, month, 1);
+        var firstSunday = firstDay.Day + ((7 - (int)firstDay.DayOfWeek) % 7);
+        if (firstSunday == 0) firstSunday = 7;
+        return firstSunday + (n - 1) * 7;
     }
 }

@@ -4,8 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="⚙️ 조건식 설정" 
-        Height="800" Width="1000"
+        Title="⚙️ 조건식 설정"
+        Height="900" Width="1000"
         WindowStartupLocation="CenterOwner"
         Background="#F5F5F5"
         ResizeMode="CanResize">
@@ -92,18 +92,30 @@
                            Text="📋 조건 목록" 
                            Style="{StaticResource SectionHeaderStyle}"/>
                 
-                <DataGrid Grid.Row="1" 
+                <DataGrid Grid.Row="1"
                           x:Name="ConditionsDataGrid"
+                          ItemsSource="{Binding Conditions}"
                           Style="{StaticResource DataGridStyle}"
                           Margin="0,0,0,12">
                     <DataGrid.Columns>
-                        <DataGridCheckBoxColumn Header="✓" 
-                                                Binding="{Binding IsEnabled}" 
+                        <DataGridCheckBoxColumn Header="✓"
+                                                Binding="{Binding IsEnabled}"
                                                 Width="40"/>
-                        <DataGridTextColumn Header="ID" 
-                                            Binding="{Binding ConditionId}" 
-                                            Width="50" 
-                                            IsReadOnly="True"/>
+                        <DataGridTemplateColumn Header="ID" Width="50">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="{Binding ConditionId}"
+                                            Width="35"
+                                            Height="25"
+                                            Background="#2196F3"
+                                            Foreground="White"
+                                            FontWeight="Bold"
+                                            BorderThickness="0"
+                                            Cursor="Hand"
+                                            Click="AddConditionIdToFormulaButton_Click"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="조건 내용" 
                                             Binding="{Binding Description}" 
                                             Width="*" 
@@ -111,30 +123,13 @@
                         <DataGridTemplateColumn Header="삭제" Width="60">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="X" 
-                                            Width="30" 
+                                    <Button Content="X"
+                                            Width="30"
                                             Height="30"
                                             Background="#F44336"
                                             Foreground="White"
                                             BorderThickness="0"
                                             Click="DeleteConditionButton_Click"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="▲▼" Width="60">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button Content="▲" 
-                                                Width="25" 
-                                                Height="25"
-                                                Margin="0,0,2,0"
-                                                Click="MoveUpButton_Click"/>
-                                        <Button Content="▼" 
-                                                Width="25" 
-                                                Height="25"
-                                                Click="MoveDownButton_Click"/>
-                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -283,8 +278,9 @@
                            Text="🎯 조건 충족 종목 미리보기 (실시간)" 
                            Style="{StaticResource SectionHeaderStyle}"/>
                 
-                <DataGrid Grid.Row="1" 
+                <DataGrid Grid.Row="1"
                           x:Name="MatchedStocksDataGrid"
+                          ItemsSource="{Binding MatchedStocks}"
                           Style="{StaticResource DataGridStyle}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="순위" 

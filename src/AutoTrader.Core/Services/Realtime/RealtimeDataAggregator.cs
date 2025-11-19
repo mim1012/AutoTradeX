@@ -10,8 +10,9 @@ namespace AutoTrader.Core.Services.Realtime;
 /// - ConcurrentDictionary 기반 Thread-safe 캐싱
 /// - 종목별 최신 데이터 및 통계 관리
 /// - 데이터 신선도 체크 (10초)
+/// - 자동 메모리 정리 (10분마다)
 /// </summary>
-public class RealtimeDataAggregator : IRealtimeDataAggregator
+public class RealtimeDataAggregator : IRealtimeDataAggregator, IDisposable
 {
     private readonly ILogger<RealtimeDataAggregator> _logger;
 
@@ -21,9 +22,22 @@ public class RealtimeDataAggregator : IRealtimeDataAggregator
     // 통계
     private long _totalUpdates;
 
+    // 자동 메모리 정리 타이머 (10분마다 실행)
+    private readonly Timer _cleanupTimer;
+    private bool _disposed;
+
     public RealtimeDataAggregator(ILogger<RealtimeDataAggregator> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // 10분마다 자동으로 만료된 데이터 제거
+        _cleanupTimer = new Timer(
+            callback: _ => RemoveStaleData(),
+            state: null,
+            dueTime: TimeSpan.FromMinutes(10),
+            period: TimeSpan.FromMinutes(10));
+
+        _logger.LogInformation("RealtimeDataAggregator initialized with automatic cleanup every 10 minutes");
     }
 
     /// <inheritdoc/>
@@ -104,4 +118,50 @@ public class RealtimeDataAggregator : IRealtimeDataAggregator
 
     /// <inheritdoc/>
     public long TotalUpdates => _totalUpdates;
+
+    /// <summary>
+    /// 만료된 데이터 제거 (메모리 최적화)
+    /// </summary>
+    /// <param name="maxAge">최대 보관 시간 (기본: 1분)</param>
+    /// <returns>제거된 항목 수</returns>
+    public int RemoveStaleData(TimeSpan? maxAge = null)
+    {
+        var threshold = maxAge ?? TimeSpan.FromMinutes(1);
+
+        var staleSymbols = _dataCache.Values
+            .Where(data => DateTime.UtcNow - data.LastUpdatedAt > threshold)
+            .Select(data => data.Symbol)
+            .ToList();
+
+        int removedCount = 0;
+        foreach (var symbol in staleSymbols)
+        {
+            if (_dataCache.TryRemove(symbol, out _))
+            {
+                removedCount++;
+            }
+        }
+
+        if (removedCount > 0)
+        {
+            _logger.LogInformation("Removed {Count} stale stock data entries (older than {Threshold})",
+                removedCount, threshold);
+        }
+
+        return removedCount;
+    }
+
+    /// <summary>
+    /// Dispose 패턴 구현 - Timer 리소스 정리
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _cleanupTimer?.Dispose();
+        _disposed = true;
+
+        _logger.LogInformation("RealtimeDataAggregator disposed");
+    }
 }

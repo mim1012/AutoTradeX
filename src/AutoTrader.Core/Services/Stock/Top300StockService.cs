@@ -10,16 +10,17 @@ namespace AutoTrader.Core.Services.Stock;
 /// - Thread-safe 메모리 캐시
 /// - WebSocket 구독 대상 제공
 /// </summary>
-public class Top300StockService : ITop300StockService
+public class Top300StockService : ITop300StockService, IDisposable
 {
     private readonly TradeRankingApiService _rankingApi;
     private readonly ILogger<Top300StockService> _logger;
 
     // Thread-safe 캐시
     private readonly ConcurrentDictionary<string, TradeRankingItem> _stockCache = new();
-    private readonly object _refreshLock = new();
+    private readonly SemaphoreSlim _refreshSemaphore = new(1, 1);
 
     private DateTime? _lastRefreshTime;
+    private bool _disposed;
 
     public Top300StockService(
         TradeRankingApiService rankingApi,
@@ -32,7 +33,10 @@ public class Top300StockService : ITop300StockService
     /// <inheritdoc/>
     public async Task RefreshTop300Async()
     {
-        lock (_refreshLock)
+        // SemaphoreSlim을 사용한 비동기 잠금
+        await _refreshSemaphore.WaitAsync();
+
+        try
         {
             // 중복 갱신 방지 (1분 이내 재호출 시 스킵)
             if (_lastRefreshTime.HasValue &&
@@ -42,12 +46,9 @@ public class Top300StockService : ITop300StockService
                     (DateTime.UtcNow - _lastRefreshTime.Value).TotalSeconds);
                 return;
             }
-        }
 
-        _logger.LogInformation("Refreshing Top 300 stocks...");
+            _logger.LogInformation("Refreshing Top 300 stocks...");
 
-        try
-        {
             // NASDAQ + NYSE에서 Top 150씩 조회 후 병합
             var top300Stocks = await _rankingApi.GetTop300FromAllMarketsAsync(count: 150);
 
@@ -74,6 +75,10 @@ public class Top300StockService : ITop300StockService
             _logger.LogError(ex, "Failed to refresh Top 300 stocks");
             throw;
         }
+        finally
+        {
+            _refreshSemaphore.Release();
+        }
     }
 
     /// <inheritdoc/>
@@ -95,4 +100,18 @@ public class Top300StockService : ITop300StockService
 
     /// <inheritdoc/>
     public int CachedStockCount => _stockCache.Count;
+
+    /// <summary>
+    /// Dispose 패턴 구현 - SemaphoreSlim 리소스 정리
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _refreshSemaphore?.Dispose();
+        _disposed = true;
+
+        _logger.LogInformation("Top300StockService disposed");
+    }
 }

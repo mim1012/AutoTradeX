@@ -36,8 +36,9 @@ public partial class ConditionSetEditorDialog : Window
     /// </summary>
     private void LoadConditions()
     {
-        ConditionsDataGrid.ItemsSource = _viewModel.Conditions;
-        MatchedStocksDataGrid.ItemsSource = _viewModel.MatchedStocks;
+        // ObservableCollection이므로 바인딩 자동 업데이트됨
+        // ConditionsDataGrid.ItemsSource = _viewModel.Conditions;
+        // MatchedStocksDataGrid.ItemsSource = _viewModel.MatchedStocks;
     }
 
     /// <summary>
@@ -144,34 +145,40 @@ public partial class ConditionSetEditorDialog : Window
         }
     }
 
+
     /// <summary>
-    /// 조건 위로 이동 버튼 클릭
+    /// 조건 목록에서 조건 ID 버튼 클릭 - 조건식에 추가
     /// </summary>
-    private void MoveUpButton_Click(object sender, RoutedEventArgs e)
+    private void AddConditionIdToFormulaButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.DataContext is ConditionItemViewModel condition)
         {
-            _viewModel.MoveConditionUp(condition);
-            LoadConditions();
+            // 이미 조건식에 있는지 확인
+            var existingToken = _viewModel.FormulaTokens.FirstOrDefault(t =>
+                t.Type == FormulaTokenType.ConditionId && t.Value == condition.ConditionId);
+
+            if (existingToken != null)
+            {
+                // 이미 있으면 제거
+                _viewModel.FormulaTokens.Remove(existingToken);
+            }
+            else
+            {
+                // 없으면 추가 (AND 연산자와 함께)
+                if (_viewModel.FormulaTokens.Count > 0 &&
+                    _viewModel.FormulaTokens.Last().Type == FormulaTokenType.ConditionId)
+                {
+                    // 마지막이 조건 ID면 AND 연산자 추가
+                    _viewModel.FormulaTokens.Add(new FormulaToken(FormulaTokenType.Operator, "and"));
+                }
+                _viewModel.FormulaTokens.Add(new FormulaToken(FormulaTokenType.ConditionId, condition.ConditionId));
+            }
             UpdateFormulaEditor();
         }
     }
 
     /// <summary>
-    /// 조건 아래로 이동 버튼 클릭
-    /// </summary>
-    private void MoveDownButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button button && button.DataContext is ConditionItemViewModel condition)
-        {
-            _viewModel.MoveConditionDown(condition);
-            LoadConditions();
-            UpdateFormulaEditor();
-        }
-    }
-
-    /// <summary>
-    /// 조건 ID 버튼 클릭
+    /// 조건식에서 조건 ID 버튼 클릭 - 조건식에서 제거
     /// </summary>
     private void ConditionIdButton_Click(object sender, RoutedEventArgs e)
     {
