@@ -39,6 +39,8 @@ namespace AutoTrader.UI.ViewModels
         private bool _excludeOwnedStocks = false;
         private string _apiTestStatus = string.Empty;
         private Brush _apiTestStatusColor = new SolidColorBrush(Colors.Black);
+        private bool _isAppKeyVisible = false;
+        private bool _isAppSecretVisible = false;
 
         public AccountDetailViewModel() : this(null)
         {
@@ -143,6 +145,18 @@ namespace AutoTrader.UI.ViewModels
             set => SetProperty(ref _apiTestStatusColor, value);
         }
 
+        public bool IsAppKeyVisible
+        {
+            get => _isAppKeyVisible;
+            set => SetProperty(ref _isAppKeyVisible, value);
+        }
+
+        public bool IsAppSecretVisible
+        {
+            get => _isAppSecretVisible;
+            set => SetProperty(ref _isAppSecretVisible, value);
+        }
+
         #endregion
 
         #region Commands
@@ -185,8 +199,7 @@ namespace AutoTrader.UI.ViewModels
         /// </summary>
         private void ToggleAppKeyVisibility()
         {
-            // TODO: PasswordBox의 표시/숨김 토글 구현
-            MessageBox.Show("AppKey 표시/숨김 기능은 추후 구현 예정입니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+            IsAppKeyVisible = !IsAppKeyVisible;
         }
 
         /// <summary>
@@ -194,8 +207,7 @@ namespace AutoTrader.UI.ViewModels
         /// </summary>
         private void ToggleAppSecretVisibility()
         {
-            // TODO: PasswordBox의 표시/숨김 토글 구현
-            MessageBox.Show("AppSecret 표시/숨김 기능은 추후 구현 예정입니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+            IsAppSecretVisible = !IsAppSecretVisible;
         }
 
         /// <summary>

@@ -477,7 +477,162 @@ public partial class ConditionEditorDialog : Window
 
     private void LoadExistingCondition(ConditionItemViewModel condition)
     {
-        // TODO: 편집 모드 구현 (기존 조건 데이터 로드)
-        // 현재는 신규 추가만 지원
+        if (condition == null) return;
+
+        // 1. 조건 타입 ComboBox 선택 (자동으로 폼 빌드)
+        string conditionTypeTag = condition.Type.ToString();
+        foreach (ComboBoxItem item in ConditionTypeComboBox.Items)
+        {
+            if (item.Tag?.ToString() == conditionTypeTag)
+            {
+                ConditionTypeComboBox.SelectedItem = item;
+                break;
+            }
+        }
+
+        // 2. 폼이 빌드될 때까지 대기 (SelectionChanged 이벤트 완료 후)
+        Dispatcher.InvokeAsync(() =>
+        {
+            // 3. 조건 타입별 파라미터 로드
+            switch (conditionTypeTag)
+            {
+                case "PriceChange":
+                    LoadPriceChangeParameters(condition);
+                    break;
+                case "MovingAverage":
+                    LoadMovingAverageParameters(condition);
+                    break;
+                case "TradeVolume":
+                    LoadTradeVolumeParameters(condition);
+                    break;
+                case "PriceComparison":
+                    LoadPriceComparisonParameters(condition);
+                    break;
+            }
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void LoadPriceChangeParameters(ConditionItemViewModel condition)
+    {
+        // 캔들 타입 로드
+        if (condition.Parameters.TryGetValue("CandleType", out var candleType) && _candleTypeComboBox != null)
+        {
+            var candleTypeStr = candleType.ToString();
+            foreach (ComboBoxItem item in _candleTypeComboBox.Items)
+            {
+                if (item.Tag?.ToString() == candleTypeStr)
+                {
+                    _candleTypeComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        // 등락률 범위 로드
+        if (condition.Parameters.TryGetValue("MinPercent", out var minPercent) && _minPercentTextBox != null)
+        {
+            _minPercentTextBox.Text = minPercent.ToString();
+        }
+
+        if (condition.Parameters.TryGetValue("MaxPercent", out var maxPercent) && _maxPercentTextBox != null)
+        {
+            _maxPercentTextBox.Text = maxPercent.ToString();
+        }
+    }
+
+    private void LoadMovingAverageParameters(ConditionItemViewModel condition)
+    {
+        // MA 타입 로드 (10, 20, or 120)
+        if (condition.Parameters.TryGetValue("MaType", out var maType) && _maTypeComboBox != null)
+        {
+            var maTypeStr = maType.ToString();
+            foreach (ComboBoxItem item in _maTypeComboBox.Items)
+            {
+                if (item.Tag?.ToString() == maTypeStr)
+                {
+                    _maTypeComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        // MA 범위 로드
+        if (condition.Parameters.TryGetValue("MaRangeMin", out var maRangeMin) && _minPercentTextBox != null)
+        {
+            _minPercentTextBox.Text = maRangeMin.ToString();
+        }
+
+        if (condition.Parameters.TryGetValue("MaRangeMax", out var maRangeMax) && _maxPercentTextBox != null)
+        {
+            _maxPercentTextBox.Text = maRangeMax.ToString();
+        }
+    }
+
+    private void LoadTradeVolumeParameters(ConditionItemViewModel condition)
+    {
+        // 최소 거래량 로드
+        if (condition.Parameters.TryGetValue("MinTradeVolume", out var minVolume) && _minTradeVolumeTextBox != null)
+        {
+            _minTradeVolumeTextBox.Text = minVolume.ToString();
+        }
+    }
+
+    private void LoadPriceComparisonParameters(ConditionItemViewModel condition)
+    {
+        // 비교 요소 A 로드 (예: offset=0, element=Open -> "0_Open")
+        if (condition.Parameters.TryGetValue("CandleOffsetA", out var offsetA) &&
+            condition.Parameters.TryGetValue("PriceElementA", out var elementA) &&
+            _priceElementAComboBox != null)
+        {
+            var tagA = $"{offsetA}_{elementA}";
+            foreach (ComboBoxItem item in _priceElementAComboBox.Items)
+            {
+                if (item.Tag?.ToString() == tagA)
+                {
+                    _priceElementAComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        // 비교 연산자 로드
+        if (condition.Parameters.TryGetValue("Operator", out var operatorValue) && _comparisonOperatorComboBox != null)
+        {
+            var operatorStr = operatorValue.ToString();
+            var operatorSymbol = operatorStr switch
+            {
+                "GreaterThan" => ">",
+                "LessThan" => "<",
+                "GreaterThanOrEquals" => ">=",
+                "LessThanOrEquals" => "<=",
+                "Equals" => "=",
+                _ => ">"
+            };
+
+            foreach (ComboBoxItem item in _comparisonOperatorComboBox.Items)
+            {
+                if (item.Tag?.ToString() == operatorSymbol)
+                {
+                    _comparisonOperatorComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        // 비교 요소 B 로드
+        if (condition.Parameters.TryGetValue("CandleOffsetB", out var offsetB) &&
+            condition.Parameters.TryGetValue("PriceElementB", out var elementB) &&
+            _priceElementBComboBox != null)
+        {
+            var tagB = $"{offsetB}_{elementB}";
+            foreach (ComboBoxItem item in _priceElementBComboBox.Items)
+            {
+                if (item.Tag?.ToString() == tagB)
+                {
+                    _priceElementBComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
     }
 }

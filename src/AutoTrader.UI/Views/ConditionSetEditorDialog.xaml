@@ -5,11 +5,12 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="⚙️ 조건식 설정"
-        Height="900" Width="1000"
+        Height="750" Width="1000"
+        MaxHeight="800"
         WindowStartupLocation="CenterOwner"
         Background="#F5F5F5"
         ResizeMode="CanResize">
-    
+
     <Window.Resources>
         <Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="16"/>
@@ -31,18 +32,65 @@
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
     </Window.Resources>
-    
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="250"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="150"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+
+    <DockPanel>
+        <!-- 하단 버튼을 독립적으로 고정 -->
+        <Border DockPanel.Dock="Bottom"
+                Background="#F5F5F5"
+                Padding="20,10,20,10"
+                BorderBrush="#E0E0E0"
+                BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <Button Content="취소"
+                        Width="100"
+                        Height="40"
+                        Margin="0,0,10,0"
+                        Click="CancelButton_Click"/>
+                <Button Content="저장"
+                        Width="100"
+                        Height="40"
+                        Background="#2196F3"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Click="SaveButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="16,8">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#1976D2"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- 스크롤 가능한 콘텐츠 영역 -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="250"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="150"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="300"/>
+                </Grid.RowDefinitions>
         
         <!-- 헤더 -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,20">
@@ -305,45 +353,7 @@
                 </DataGrid>
             </Grid>
         </Border>
-        
-        <!-- 하단 버튼 -->
-        <StackPanel Grid.Row="7" 
-                    Orientation="Horizontal" 
-                    HorizontalAlignment="Right"
-                    Margin="0,0,0,0">
-            <Button Content="취소" 
-                    Width="100" 
-                    Height="40" 
-                    Margin="0,0,10,0"
-                    Click="CancelButton_Click"/>
-            <Button Content="저장" 
-                    Width="100" 
-                    Height="40"
-                    Background="#2196F3"
-                    Foreground="White"
-                    BorderThickness="0"
-                    Click="SaveButton_Click">
-                <Button.Style>
-                    <Style TargetType="Button">
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}"
-                                            CornerRadius="4"
-                                            Padding="16,8">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#1976D2"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
-        </StackPanel>
-    </Grid>
+            </Grid>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

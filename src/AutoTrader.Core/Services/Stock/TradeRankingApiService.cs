@@ -77,15 +77,15 @@ public class TradeRankingApiService
                     headers,
                     ApiPriority.Normal);
 
-                if (response.Items == null || response.Items.Count == 0)
+                if (response.Output2 == null || response.Output2.Count == 0)
                 {
                     _logger.LogWarning("No more stocks available at page {Page}", page + 1);
                     break;
                 }
 
-                allStocks.AddRange(response.Items);
+                allStocks.AddRange(response.Output2);
                 _logger.LogInformation("Fetched page {Page}: {Count} stocks (total: {Total})",
-                    page + 1, response.Items.Count, allStocks.Count);
+                    page + 1, response.Output2.Count, allStocks.Count);
 
                 // 목표 개수에 도달하면 중단
                 if (allStocks.Count >= count)
@@ -130,7 +130,7 @@ public class TradeRankingApiService
 
             // 병합 후 시가총액 기준으로 재정렬하여 상위 300개 선택
             var allStocks = nasdaqStocks.Concat(nyseStocks)
-                .OrderByDescending(x => decimal.TryParse(x.TradeAmount, out var amt) ? amt : 0)
+                .OrderByDescending(x => x.TradeAmount)
                 .Take(300)
                 .ToList();
 

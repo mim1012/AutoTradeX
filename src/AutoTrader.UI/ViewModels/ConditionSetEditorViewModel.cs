@@ -12,6 +12,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 
 namespace AutoTrader.UI.ViewModels
 {
@@ -63,10 +64,8 @@ namespace AutoTrader.UI.ViewModels
             // Repository 초기화
             _conditionSetRepository = new ConditionSetRepository(_dbContext);
 
-            // Service 초기화 (TODO: DI로 변경 필요)
-            // _marketDataService = new KisMarketDataService(...); 
-            // 현재는 null 상태로 두고, 실제 런타임에서는 DI를 통해 주입받거나 해야 함.
-            // 데모 목적상 null 체크 후 동작하도록 수정.
+            // Note: MarketDataService는 App.xaml.cs DI Container에서 주입받습니다.
+            // 이 기본 생성자는 디자인 타임 및 독립 실행용입니다.
         }
 
         // DI 생성자 추가
@@ -121,7 +120,9 @@ namespace AutoTrader.UI.ViewModels
 
                     // 조건 목록 로드
                     Conditions.Clear();
-                    foreach (var condition in conditionSet.Conditions.OrderBy(c => c.ConditionOrder))
+                    var sortedConditions = conditionSet.Conditions.OrderBy(c => c.ConditionOrder).ToList();
+
+                    foreach (var condition in sortedConditions)
                     {
                         var conditionItem = new ConditionItemViewModel
                         {
@@ -133,8 +134,12 @@ namespace AutoTrader.UI.ViewModels
                         Conditions.Add(conditionItem);
                     }
 
-                    // 조건식 파싱 (TODO: 실제 조건식 파싱 로직 구현)
-                    ParseFormula("G and H and I and J and K");
+                    // 조건식 동적 생성 및 파싱
+                    var formula = BuildFormulaFromConditions(sortedConditions);
+                    if (!string.IsNullOrEmpty(formula))
+                    {
+                        ParseFormula(formula);
+                    }
                 }
             }
             catch (Exception ex)
@@ -274,6 +279,14 @@ namespace AutoTrader.UI.ViewModels
         /// </summary>
         public bool ValidateFormula()
         {
+            // 조건이 없으면 무효
+            if (Conditions.Count == 0)
+                return false;
+
+            // 토큰이 없으면 무효
+            if (FormulaTokens.Count == 0)
+                return false;
+
             // 괄호 균형 검사
             int openCount = FormulaTokens.Count(t => t.Type == FormulaTokenType.OpenParen);
             int closeCount = FormulaTokens.Count(t => t.Type == FormulaTokenType.CloseParen);
@@ -281,9 +294,47 @@ namespace AutoTrader.UI.ViewModels
             if (openCount != closeCount)
                 return false;
 
-            // TODO: 추가 유효성 검사 (연산자 연속 등)
+            // 연산자 연속 검사
+            for (int i = 0; i < FormulaTokens.Count - 1; i++)
+            {
+                var current = FormulaTokens[i];
+                var next = FormulaTokens[i + 1];
 
-            return true;
+                // 연산자가 연속으로 나오면 무효 (예: "A and and B")
+                if (current.Type == FormulaTokenType.Operator && next.Type == FormulaTokenType.Operator)
+                    return false;
+
+                // 닫는 괄호 다음에 조건 ID가 오면 무효 (예: ")A")
+                if (current.Type == FormulaTokenType.CloseParen && next.Type == FormulaTokenType.ConditionId)
+                    return false;
+
+                // 조건 ID 다음에 여는 괄호가 오면 무효 (예: "A(")
+                if (current.Type == FormulaTokenType.ConditionId && next.Type == FormulaTokenType.OpenParen)
+                    return false;
+            }
+
+            // 시작과 끝 검사
+            var first = FormulaTokens[0];
+            var last = FormulaTokens[FormulaTokens.Count - 1];
+
+            // 연산자로 시작하거나 끝나면 무효
+            if (first.Type == FormulaTokenType.Operator || last.Type == FormulaTokenType.Operator)
+                return false;
+
+            // FormulaParser를 사용한 완전한 구문 검사
+            try
+            {
+                var formula = GetFormulaPreview();
+                var availableIds = Conditions.Select(c => c.Id).ToList();
+                var parser = new Core.Services.FormulaParser();
+                var result = parser.Parse(formula, availableIds);
+
+                return result.Success;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -401,8 +452,132 @@ namespace AutoTrader.UI.ViewModels
         /// </summary>
         private string GetConditionDescription(Core.Models.Database.Condition condition)
         {
-            // TODO: 실제 조건 파라미터 파싱하여 설명 생성
-            return $"{condition.ConditionType} 조건";
+            try
+            {
+                if (string.IsNullOrWhiteSpace(condition.Parameters))
+                {
+                    return $"{condition.ConditionType} 조건";
+                }
+
+                var parameters = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(condition.Parameters);
+                if (parameters == null)
+                {
+                    return $"{condition.ConditionType} 조건";
+                }
+
+                return condition.ConditionType switch
+                {
+                    "PriceChange" => GeneratePriceChangeDescription(parameters),
+                    "MovingAverage" => GenerateMovingAverageDescription(parameters),
+                    "TradeVolume" => GenerateTradeVolumeDescription(parameters),
+                    "PriceComparison" => GeneratePriceComparisonDescription(parameters),
+                    _ => $"{condition.ConditionType} 조건"
+                };
+            }
+            catch (Exception)
+            {
+                return $"{condition.ConditionType} 조건";
+            }
+        }
+
+        private string GeneratePriceChangeDescription(Dictionary<string, JsonElement> parameters)
+        {
+            var candleType = parameters.TryGetValue("CandleType", out var ct) ? ct.GetString() : "Daily";
+            var minPercent = parameters.TryGetValue("MinPercent", out var min) ? min.GetDecimal() : 0;
+            var maxPercent = parameters.TryGetValue("MaxPercent", out var max) ? max.GetDecimal() : 0;
+
+            var candleTypeKor = candleType switch
+            {
+                "Daily" => "일봉",
+                "Weekly" => "주봉",
+                "Monthly" => "월봉",
+                _ => "일봉"
+            };
+
+            return $"등락률: [{candleTypeKor}] 0봉 전 종가 대비 {minPercent:F1}% ~ {maxPercent:F1}%";
+        }
+
+        private string GenerateMovingAverageDescription(Dictionary<string, JsonElement> parameters)
+        {
+            var maType = parameters.TryGetValue("MaType", out var mt) ? mt.GetInt32() : 10;
+            var maRangeMin = parameters.TryGetValue("MaRangeMin", out var min) ? min.GetDecimal() : 0;
+            var maRangeMax = parameters.TryGetValue("MaRangeMax", out var max) ? max.GetDecimal() : 0;
+
+            return $"이동평균: {maType}일 이평선 대비 {maRangeMin:F1}% ~ {maRangeMax:F1}%";
+        }
+
+        private string GenerateTradeVolumeDescription(Dictionary<string, JsonElement> parameters)
+        {
+            var minTradeVolume = parameters.TryGetValue("MinTradeVolume", out var min) ? min.GetDecimal() : 0;
+
+            return $"거래량: 최소 {minTradeVolume:N0}주 이상";
+        }
+
+        private string GeneratePriceComparisonDescription(Dictionary<string, JsonElement> parameters)
+        {
+            var offsetA = parameters.TryGetValue("CandleOffsetA", out var oa) ? oa.GetInt32() : 0;
+            var elementA = parameters.TryGetValue("PriceElementA", out var ea) ? ea.GetString() : "Close";
+            var op = parameters.TryGetValue("Operator", out var o) ? o.GetString() : ">";
+            var offsetB = parameters.TryGetValue("CandleOffsetB", out var ob) ? ob.GetInt32() : 0;
+            var elementB = parameters.TryGetValue("PriceElementB", out var eb) ? eb.GetString() : "Close";
+
+            var elementAKor = elementA switch
+            {
+                "Open" => "시가",
+                "High" => "고가",
+                "Low" => "저가",
+                "Close" => "종가",
+                _ => "종가"
+            };
+
+            var elementBKor = elementB switch
+            {
+                "Open" => "시가",
+                "High" => "고가",
+                "Low" => "저가",
+                "Close" => "종가",
+                _ => "종가"
+            };
+
+            var opKor = op switch
+            {
+                ">" => "초과",
+                ">=" => "이상",
+                "<" => "미만",
+                "<=" => "이하",
+                "==" => "같음",
+                _ => "초과"
+            };
+
+            return $"가격 비교: {offsetA}봉 전 {elementAKor} {opKor} {offsetB}봉 전 {elementBKor}";
+        }
+
+        /// <summary>
+        /// DB 조건 목록에서 조건식 문자열 생성
+        /// </summary>
+        private string BuildFormulaFromConditions(List<Core.Models.Database.Condition> conditions)
+        {
+            if (conditions == null || conditions.Count == 0)
+                return string.Empty;
+
+            var formulaParts = new List<string>();
+
+            for (int i = 0; i < conditions.Count; i++)
+            {
+                var condition = conditions[i];
+                var conditionId = GetConditionIdLetter(condition.ConditionOrder);
+
+                // 조건 ID 추가
+                formulaParts.Add(conditionId);
+
+                // 마지막 조건이 아니면 LogicOperator 추가
+                if (i < conditions.Count - 1 && !string.IsNullOrEmpty(condition.LogicOperator))
+                {
+                    formulaParts.Add(condition.LogicOperator.ToLower());
+                }
+            }
+
+            return string.Join(" ", formulaParts);
         }
 
         /// <summary>

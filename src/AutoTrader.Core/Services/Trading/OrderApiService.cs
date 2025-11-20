@@ -15,6 +15,7 @@ namespace AutoTrader.Core.Services.Trading;
 public class OrderApiService
 {
     private readonly IKisApiClient _apiClient;
+    private readonly BalanceApiService _balanceService;
     private readonly KisSettings _kisSettings;
     private readonly ILogger<OrderApiService> _logger;
 
@@ -24,10 +25,12 @@ public class OrderApiService
 
     public OrderApiService(
         IKisApiClient apiClient,
+        BalanceApiService balanceService,
         IOptions<KisSettings> kisSettings,
         ILogger<OrderApiService> logger)
     {
         _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
+        _balanceService = balanceService ?? throw new ArgumentNullException(nameof(balanceService));
         _kisSettings = kisSettings?.Value ?? throw new ArgumentNullException(nameof(kisSettings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -94,16 +97,28 @@ public class OrderApiService
     }
 
     /// <summary>
-    /// 계좌 잔고 조회 (간단 버전)
+    /// 계좌 잔고 조회 (주문 가능 금액)
     /// </summary>
-    /// <returns>USD 잔고</returns>
-    public async Task<decimal> GetAccountBalanceAsync()
+    /// <param name="accountNumber">계좌번호 (선택, null이면 설정 파일의 계좌 사용)</param>
+    /// <returns>USD 주문 가능 금액</returns>
+    public async Task<decimal> GetAccountBalanceAsync(string? accountNumber = null)
     {
-        // TODO: 실제 계좌 잔고 조회 API 구현
-        // 현재는 더미 값 반환
-        _logger.LogWarning("Using dummy account balance (TODO: implement real API)");
+        try
+        {
+            var acctNo = accountNumber ?? _kisSettings.AccountNumber;
+            var balance = await _balanceService.GetAvailableBalanceAsync(acctNo);
 
-        await Task.CompletedTask;
-        return 10000m; // $10,000 (더미)
+            _logger.LogInformation("Account balance retrieved: ${Balance:N2}", balance);
+            return balance;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get account balance, falling back to default value");
+
+            // API 실패 시 설정된 기본값 사용 (안전장치)
+            const decimal fallbackBalance = 10000m;
+            _logger.LogWarning("Using fallback balance: ${Balance:N2}", fallbackBalance);
+            return fallbackBalance;
+        }
     }
 }

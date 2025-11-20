@@ -732,10 +732,10 @@ public class TradingWorker : BackgroundService
                 LatestData = new RealtimeStockData
                 {
                     Symbol = item.Symbol,
-                    CurrentPrice = item.Last,
-                    ChangeRate = item.ChangeRate,
-                    PriceDifference = item.Difference,
-                    AccumulatedTradeAmount = item.TradeAmount,
+                    CurrentPrice = item.CurrentPrice.ToString("F2"),
+                    ChangeRate = item.ChangePercent.ToString("F2"),
+                    PriceDifference = (item.CurrentPrice * item.ChangePercent / 100m).ToString("F2"),
+                    AccumulatedTradeAmount = item.TradeAmount.ToString("F0"),
                     ExecutionTime = DateTime.UtcNow.ToString("HHmmss")
                 },
                 LastUpdatedAt = DateTime.UtcNow,

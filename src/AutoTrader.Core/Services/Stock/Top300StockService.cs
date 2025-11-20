@@ -85,7 +85,7 @@ public class Top300StockService : ITop300StockService, IDisposable
     public List<TradeRankingItem> GetCachedTop300()
     {
         return _stockCache.Values
-            .OrderBy(x => int.TryParse(x.Rank, out var rank) ? rank : int.MaxValue)
+            .OrderBy(x => x.Rank)
             .ToList();
     }
 

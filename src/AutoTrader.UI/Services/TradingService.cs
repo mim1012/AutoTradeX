@@ -71,17 +71,17 @@ public class TradingService : ITradingService
                 // Core DTO를 UI Model로 변환
                 foreach (var stock in cachedStocks)
                 {
-                    var changeRate = stock.ChangeRateDecimal;
+                    var changeRate = stock.ChangePercent;
                     var isConditionMet = changeRate >= -7 && changeRate <= 0; // 등락률 조건
 
                     _top300Stocks.Add(new StockInfo
                     {
-                        Rank = stock.RankNumber,
+                        Rank = stock.Rank,
                         Symbol = stock.Symbol,
                         Name = stock.Name,
                         CurrentPrice = stock.CurrentPrice,
                         ChangeRate = changeRate,
-                        TradeAmount = decimal.TryParse(stock.TradeAmount, out var amt) ? amt : 0,
+                        TradeAmount = stock.TradeAmount,
                         IsConditionMet = isConditionMet,
                         IsCandidate = false // CandidateTracker에서 관리
                     });

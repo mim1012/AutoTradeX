@@ -13,6 +13,7 @@ using AutoTrader.Core.Models.Trading;
 using AutoTrader.Core.Repositories;
 using AutoTrader.Core.Models.Database;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace AutoTrader.UI.ViewModels;
 
@@ -28,35 +29,70 @@ public class ConditionBuilderViewModel : ViewModelBase
     private readonly IConditionEvaluator? _conditionEvaluator;
     private readonly AccountRepository? _accountRepository;
     private readonly ConditionSetRepository? _conditionSetRepository;
+    private readonly ILogger<ConditionBuilderViewModel>? _logger;
 
     public ConditionBuilderViewModel()
     {
         _mappingService = new ConditionMappingService();
         Conditions = new ObservableCollection<ConditionItemViewModel>();
-
-        // Conditions 컬렉션 변경 이벤트 구독
         Conditions.CollectionChanged += OnConditionsCollectionChanged;
 
-        // Commands 초기화
         AddConditionCommand = new RelayCommand(_ => ExecuteAddCondition(), _ => CanExecuteAddCondition());
         EditConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteEditCondition);
         RemoveConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteRemoveCondition);
         SaveConditionsCommand = new RelayCommand(_ => ExecuteSaveConditions());
         TestConditionsCommand = new RelayCommand(_ => ExecuteTestConditions());
 
-        // 초기 논리식 설정
         UpdateLogicExpression();
     }
 
-    public ConditionBuilderViewModel(IConditionEvaluator conditionEvaluator) : this()
+    public ConditionBuilderViewModel(ILogger<ConditionBuilderViewModel> logger)
     {
-        _conditionEvaluator = conditionEvaluator;
+        _logger = logger;
+        _mappingService = new ConditionMappingService();
+        Conditions = new ObservableCollection<ConditionItemViewModel>();
+        Conditions.CollectionChanged += OnConditionsCollectionChanged;
+
+        AddConditionCommand = new RelayCommand(_ => ExecuteAddCondition(), _ => CanExecuteAddCondition());
+        EditConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteEditCondition);
+        RemoveConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteRemoveCondition);
+        SaveConditionsCommand = new RelayCommand(_ => ExecuteSaveConditions());
+        TestConditionsCommand = new RelayCommand(_ => ExecuteTestConditions());
+
+        UpdateLogicExpression();
     }
 
-    public ConditionBuilderViewModel(AccountRepository accountRepository, ConditionSetRepository conditionSetRepository) : this()
+    public ConditionBuilderViewModel(IConditionEvaluator conditionEvaluator)
+    {
+        _conditionEvaluator = conditionEvaluator;
+        _mappingService = new ConditionMappingService();
+        Conditions = new ObservableCollection<ConditionItemViewModel>();
+        Conditions.CollectionChanged += OnConditionsCollectionChanged;
+
+        AddConditionCommand = new RelayCommand(_ => ExecuteAddCondition(), _ => CanExecuteAddCondition());
+        EditConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteEditCondition);
+        RemoveConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteRemoveCondition);
+        SaveConditionsCommand = new RelayCommand(_ => ExecuteSaveConditions());
+        TestConditionsCommand = new RelayCommand(_ => ExecuteTestConditions());
+
+        UpdateLogicExpression();
+    }
+
+    public ConditionBuilderViewModel(AccountRepository accountRepository, ConditionSetRepository conditionSetRepository)
     {
         _accountRepository = accountRepository;
         _conditionSetRepository = conditionSetRepository;
+        _mappingService = new ConditionMappingService();
+        Conditions = new ObservableCollection<ConditionItemViewModel>();
+        Conditions.CollectionChanged += OnConditionsCollectionChanged;
+
+        AddConditionCommand = new RelayCommand(_ => ExecuteAddCondition(), _ => CanExecuteAddCondition());
+        EditConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteEditCondition);
+        RemoveConditionCommand = new RelayCommand<ConditionItemViewModel>(ExecuteRemoveCondition);
+        SaveConditionsCommand = new RelayCommand(_ => ExecuteSaveConditions());
+        TestConditionsCommand = new RelayCommand(_ => ExecuteTestConditions());
+
+        UpdateLogicExpression();
 
         // 저장된 조건식 로드
         _ = LoadConditionsAsync();
@@ -103,7 +139,7 @@ public class ConditionBuilderViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to load conditions: {ex.Message}");
+            _logger?.LogError(ex, "Failed to load conditions");
         }
     }
 
@@ -141,7 +177,7 @@ public class ConditionBuilderViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to deserialize condition: {ex.Message}");
+            _logger?.LogError(ex, "Failed to deserialize condition");
             return null;
         }
     }
@@ -240,7 +276,7 @@ public class ConditionBuilderViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to add condition: {ex.Message}");
+            _logger?.LogError(ex, "Failed to add condition");
             MessageBox.Show($"조건 추가 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -248,8 +284,39 @@ public class ConditionBuilderViewModel : ViewModelBase
     private void ExecuteEditCondition(ConditionItemViewModel? condition)
     {
         if (condition == null) return;
-        
-        // TODO: 조건 편집 다이얼로그 열기
+
+        try
+        {
+            // 조건 편집 다이얼로그 열기 (기존 조건 전달)
+            var dialog = new Views.ConditionEditorDialog(condition);
+
+            // Owner를 현재 활성 윈도우로 설정
+            foreach (Window window in Application.Current.Windows)
+            {
+                if (window.IsActive && window is Views.ConditionBuilderDialog)
+                {
+                    dialog.Owner = window;
+                    break;
+                }
+            }
+
+            if (dialog.ShowDialog() == true && dialog.ResultCondition != null)
+            {
+                // 기존 조건 업데이트 (ID는 유지)
+                var updatedCondition = dialog.ResultCondition;
+                condition.Type = updatedCondition.Type;
+                condition.Description = updatedCondition.Description;
+                condition.Parameters = updatedCondition.Parameters;
+                condition.IsEnabled = updatedCondition.IsEnabled;
+
+                UpdateLogicExpression();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to edit condition");
+            MessageBox.Show($"조건 편집 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void ExecuteRemoveCondition(ConditionItemViewModel? condition)
@@ -267,9 +334,8 @@ public class ConditionBuilderViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            // TODO: 로깅 서비스 추가 후 로그 기록
-            System.Diagnostics.Debug.WriteLine($"[ERROR] Failed to remove condition: {ex.Message}");
-            // TODO: 사용자에게 에러 메시지 표시
+            _logger?.LogError(ex, "Failed to remove condition");
+            MessageBox.Show($"조건 삭제 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -343,19 +409,73 @@ public class ConditionBuilderViewModel : ViewModelBase
     private string SerializeConditionParameters(ConditionItemViewModel condition)
     {
         // 조건 타입별로 파라미터를 JSON으로 직렬화
-        // TODO: 실제 파라미터 값들을 포함한 JSON 생성
-        // 현재는 Description만 저장
-        var parameters = new
+        // condition.Parameters에 실제 파라미터 값들이 저장되어 있음
+        if (condition.Parameters == null || condition.Parameters.Count == 0)
         {
-            Description = condition.Description,
-            Type = condition.Type.ToString()
-        };
-        return JsonSerializer.Serialize(parameters);
+            // 파라미터가 없으면 빈 JSON 객체 반환
+            return "{}";
+        }
+
+        // Parameters 딕셔너리를 JSON으로 직렬화
+        return JsonSerializer.Serialize(condition.Parameters);
     }
 
     private void ExecuteTestConditions()
     {
-        // TODO: 조건식 테스트 실행 로직 구현
+        try
+        {
+            // 조건이 없으면 테스트 불가
+            if (Conditions.Count == 0)
+            {
+                MessageBox.Show(
+                    "테스트할 조건이 없습니다. 조건을 추가해주세요.",
+                    "알림",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information
+                );
+                return;
+            }
+
+            // 활성화된 조건만 필터링
+            var enabledConditions = Conditions.Where(c => c.IsEnabled).ToList();
+            if (enabledConditions.Count == 0)
+            {
+                MessageBox.Show(
+                    "활성화된 조건이 없습니다. 조건을 활성화해주세요.",
+                    "알림",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information
+                );
+                return;
+            }
+
+            // 조건 요약 생성
+            var summary = string.Join("\n", enabledConditions.Select((c, index) =>
+                $"{index + 1}. {c.Id}: {c.Description}"
+            ));
+
+            var logic = LogicOperator.ToUpper() == "OR" ? "OR (하나 이상 충족)" : "AND (모두 충족)";
+
+            var message = $"조건식 테스트 결과:\n\n" +
+                         $"총 조건 개수: {enabledConditions.Count}개\n" +
+                         $"논리 연산: {logic}\n\n" +
+                         $"조건 목록:\n{summary}\n\n" +
+                         $"실제 주식 데이터로 테스트하려면 Worker 서비스를 실행하세요.";
+
+            MessageBox.Show(
+                message,
+                "조건식 테스트",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+
+            _logger?.LogInformation("Condition test executed: {Count} conditions", enabledConditions.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to test conditions");
+            MessageBox.Show($"조건식 테스트 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     #endregion

@@ -1,7 +1,9 @@
 using AutoTrader.Core.Models.Trading;
+using AutoTrader.Core.Models.Market;
 using AutoTrader.UI.Models;
 using AutoTrader.UI.ViewModels;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 
 namespace AutoTrader.UI.Services;
 
@@ -90,15 +92,43 @@ public class ConditionMappingService
 
     private TradingCondition MapMovingAverageCondition(ConditionItemViewModel uiCondition)
     {
-        // 이동평균선 조건은 Core에 직접 대응하는 타입이 없음
-        // 현재가 조건으로 근사화
-        
+        // 이동평균선 조건: Parameters에서 파라미터 추출
+        var maType = MovingAverageType.MA10; // 기본값
+        var maRangeMin = -10m; // 기본값
+        var maRangeMax = 10m; // 기본값
+
+        if (uiCondition.Parameters != null)
+        {
+            if (uiCondition.Parameters.TryGetValue("MaType", out var maTypeObj))
+            {
+                var maTypePeriod = Convert.ToInt32(maTypeObj);
+                maType = maTypePeriod switch
+                {
+                    10 => MovingAverageType.MA10,
+                    20 => MovingAverageType.MA20,
+                    120 => MovingAverageType.MA120,
+                    _ => MovingAverageType.MA10
+                };
+            }
+
+            if (uiCondition.Parameters.TryGetValue("MaRangeMin", out var minObj))
+            {
+                maRangeMin = Convert.ToDecimal(minObj);
+            }
+
+            if (uiCondition.Parameters.TryGetValue("MaRangeMax", out var maxObj))
+            {
+                maRangeMax = Convert.ToDecimal(maxObj);
+            }
+        }
+
         return new TradingCondition
         {
             Name = "이동평균선 조건",
-            Type = Core.Models.Trading.ConditionType.Price,
-            Operator = ConditionOperator.GreaterThan,
-            Value = 0, // TODO: 이평선 계산 로직 필요
+            Type = Core.Models.Trading.ConditionType.MovingAverage,
+            MaType = maType,
+            MaRangeMin = maRangeMin,
+            MaRangeMax = maRangeMax,
             Description = uiCondition.Description,
             IsEnabled = uiCondition.IsEnabled
         };
@@ -146,15 +176,77 @@ public class ConditionMappingService
 
     private TradingCondition MapPriceComparisonCondition(ConditionItemViewModel uiCondition)
     {
-        // 주가 비교 조건: "(0봉 시가) > (1봉 저가)"
-        // Core에 직접 대응하는 타입이 없으므로 현재가 조건으로 근사화
-        
+        // 주가 비교 조건: Parameters에서 파라미터 추출
+        var candleType = CandleType.Daily; // 기본값
+        var candleOffsetA = 0; // 기본값
+        var priceElementA = PriceElement.Close; // 기본값
+        var op = ConditionOperator.GreaterThan; // 기본값
+        var candleOffsetB = 1; // 기본값
+        var priceElementB = PriceElement.Close; // 기본값
+
+        if (uiCondition.Parameters != null)
+        {
+            if (uiCondition.Parameters.TryGetValue("CandleOffsetA", out var offsetAObj))
+            {
+                candleOffsetA = Convert.ToInt32(offsetAObj);
+            }
+
+            if (uiCondition.Parameters.TryGetValue("PriceElementA", out var elementAObj))
+            {
+                var elementAStr = elementAObj.ToString();
+                priceElementA = elementAStr switch
+                {
+                    "Open" => PriceElement.Open,
+                    "High" => PriceElement.High,
+                    "Low" => PriceElement.Low,
+                    "Close" => PriceElement.Close,
+                    _ => PriceElement.Close
+                };
+            }
+
+            if (uiCondition.Parameters.TryGetValue("Operator", out var opObj))
+            {
+                var opStr = opObj.ToString();
+                op = opStr switch
+                {
+                    ">" => ConditionOperator.GreaterThan,
+                    ">=" => ConditionOperator.GreaterThanOrEquals,
+                    "<" => ConditionOperator.LessThan,
+                    "<=" => ConditionOperator.LessThanOrEquals,
+                    "==" => ConditionOperator.Equals,
+                    _ => ConditionOperator.GreaterThan
+                };
+            }
+
+            if (uiCondition.Parameters.TryGetValue("CandleOffsetB", out var offsetBObj))
+            {
+                candleOffsetB = Convert.ToInt32(offsetBObj);
+            }
+
+            if (uiCondition.Parameters.TryGetValue("PriceElementB", out var elementBObj))
+            {
+                var elementBStr = elementBObj.ToString();
+                priceElementB = elementBStr switch
+                {
+                    "Open" => PriceElement.Open,
+                    "High" => PriceElement.High,
+                    "Low" => PriceElement.Low,
+                    "Close" => PriceElement.Close,
+                    _ => PriceElement.Close
+                };
+            }
+        }
+
         return new TradingCondition
         {
             Name = "주가 비교 조건",
-            Type = Core.Models.Trading.ConditionType.Price,
-            Operator = ConditionOperator.GreaterThan,
-            Value = 0, // TODO: 실제 비교 로직 필요
+            Type = Core.Models.Trading.ConditionType.PriceComparison,
+            CandleType = candleType,
+            CandleOffsetA = candleOffsetA,
+            PriceElementA = priceElementA,
+            Operator = op,
+            CandleOffsetB = candleOffsetB,
+            PriceElementB = priceElementB,
             Description = uiCondition.Description,
             IsEnabled = uiCondition.IsEnabled
         };

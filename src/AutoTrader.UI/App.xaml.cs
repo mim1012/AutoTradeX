@@ -7,6 +7,8 @@ using AutoTrader.Core.Data;
 using AutoTrader.Core.Repositories;
 using AutoTrader.Core.Services.Security;
 using AutoTrader.Core.Services.Stock;
+using AutoTrader.Core.Services.Market;
+using AutoTrader.Core.Services.Trading;
 using AutoTrader.UI.Services;
 using AutoTrader.UI.ViewModels;
 using AutoTrader.UI.Views;
@@ -85,6 +87,9 @@ public partial class App : Application
                 services.AddSingleton<ITop300StockService, AutoTrader.Core.Services.Stock.Top300StockService>();
                 services.AddSingleton<AutoTrader.Core.Services.Api.BalanceApiService>();
                 services.AddSingleton<AutoTrader.Core.Services.Schedule.IMarketScheduleService, AutoTrader.Core.Services.Schedule.MarketScheduleService>();
+                services.AddSingleton<AutoTrader.Core.Services.Market.KisMarketDataService>();
+                // Note: TradingEngine is not registered in UI - it's only needed in Worker
+                // UI only monitors via database (WorkerStatus table)
 
                 // UI 서비스 등록
                 services.AddTransient<ITradingService>(sp =>
@@ -97,7 +102,13 @@ public partial class App : Application
                 });
 
                 // ViewModels 등록
+                // Note: MainDashboardViewModel uses parameterless constructor for UI-only mode
+                // TradingEngine is only used in Worker service, UI monitors via WorkerStatus table
                 services.AddTransient<MainDashboardViewModel>();
+
+                // Note: ConditionSetEditorViewModel uses parameterless constructor for UI-only mode
+                services.AddTransient<ConditionSetEditorViewModel>();
+
                 services.AddTransient<MainViewModel>(sp =>
                 {
                     var tradingService = sp.GetRequiredService<ITradingService>();

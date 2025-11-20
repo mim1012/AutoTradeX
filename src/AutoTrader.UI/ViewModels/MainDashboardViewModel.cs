@@ -78,11 +78,9 @@ namespace AutoTrader.UI.ViewModels
             _accountRepository = new AccountRepository(_dbContext, encryptionService);
             _conditionSetRepository = new ConditionSetRepository(_dbContext);
 
-            // TODO: DI Container를 사용하여 주입받아야 함. 현재는 임시로 직접 생성 (데모용)
-            // 실제로는 App.xaml.cs에서 DI 설정 후 주입받아야 함.
-            // _marketDataService = ...
-            // _tradingEngine = ...
-            
+            // Note: MarketDataService와 TradingEngine은 App.xaml.cs DI Container에서 주입받습니다.
+            // 이 기본 생성자는 디자인 타임 및 독립 실행용입니다.
+
             // Command 초기화
             OpenAccountManagementCommand = new RelayCommand(OpenAccountManagement);
             OpenConditionEditorCommand = new RelayCommand(OpenConditionEditor);

@@ -15,7 +15,7 @@ namespace AutoTrader.Core.DTOs.Responses.TradeRanking
         public string Msg1 { get; set; } = string.Empty;
 
         [JsonProperty("output1")]
-        public List<TradeRankingMeta> Output1 { get; set; } = new List<TradeRankingMeta>();
+        public TradeRankingMeta Output1 { get; set; } = new TradeRankingMeta();
 
         [JsonProperty("output2")]
         public List<TradeRankingItem> Output2 { get; set; } = new List<TradeRankingItem>();
